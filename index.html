@@ -149,6 +149,35 @@ tr.row-warm:hover td{background:rgba(245,166,35,.12) !important}
 .pg-btn:disabled{opacity:.35;cursor:not-allowed}
 .pg-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .pg-per{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)}
+
+/* Finance mode */
+.fin-panel{background:var(--panel);border:1px solid var(--borderl);border-radius:var(--rl);padding:12px 16px;margin-bottom:16px;display:none}
+.fin-panel.visible{display:block}
+.fin-goals{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.fin-goal-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2)}
+.fin-goal-item label{font-weight:600;color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.fin-goal-input{background:var(--sec);border:1px solid var(--borderl);color:var(--text);font-size:12px;padding:4px 8px;border-radius:var(--r);width:130px;font-family:var(--mono)}
+.fin-goal-input:focus{outline:none;border-color:var(--accent)}
+.fin-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px}
+.fin-kpi{background:var(--panel);border:1px solid var(--borderl);border-radius:var(--rl);padding:10px 14px;border-left:3px solid #e8a838}
+.fin-kpi .kl{color:#a07820}
+.fin-kpi .kv{font-size:18px}
+.fin-kpi.goal .kv{color:#e8a838}
+.fin-prog{margin-top:4px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.fin-prog-fill{height:100%;background:#e8a838;border-radius:2px;transition:width .3s}
+.fin-prog-fill.over{background:var(--green)}
+th.fin-th{background:#8B5C00;color:#FFE08A}
+th.fin-th.sort-active{color:#fff}
+body.light th.fin-th{background:#C17D00;color:#FFF3C4}
+td.fin-td{background:rgba(232,168,56,.05)}
+tr:hover td.fin-td{background:rgba(232,168,56,.12) !important}
+.fin-input{background:transparent;border:none;border-bottom:1px dashed var(--borderl);color:var(--text);font-size:11px;font-family:var(--mono);width:80px;text-align:right;padding:1px 2px}
+.fin-input:focus{outline:none;border-bottom-color:var(--accent);background:var(--hover)}
+.fin-input:hover{border-bottom-color:var(--text3)}
+.fin-calc{color:#e8a838;font-family:var(--mono);font-size:11px;text-align:right;white-space:nowrap}
+.fin-btn{background:rgba(232,168,56,.15);border:1px solid rgba(232,168,56,.4);color:#e8a838;font-size:11px;padding:5px 12px;border-radius:var(--r);cursor:pointer;font-weight:600}
+.fin-btn:hover{background:rgba(232,168,56,.25)}
+.fin-btn.active{background:rgba(232,168,56,.3);border-color:#e8a838}
 </style>
 </head>
 <body>
@@ -185,9 +214,24 @@ tr.row-warm:hover td{background:rgba(245,166,35,.12) !important}
       <input id="sb" type="text" placeholder="Search deals..." oninput="go()" style="width:150px">
       <button class="btn refresh-btn" onclick="loadData()"><span id="refreshIcon">&#8635;</span> Refresh</button>
       <button class="btn" onclick="doExport()">Export CSV</button>
+      <button id="finBtn" class="fin-btn" onclick="toggleFinanceMode()">$ Finance View</button>
       <button id="themeBtn" class="btn" onclick="toggleTheme()" style="min-width:80px">&#9728; Light</button>
     </div>
   </div>
+
+  <!-- Finance Goals Panel -->
+  <div class="fin-panel" id="finPanel">
+    <div class="fin-goals">
+      <span style="font-size:10px;font-weight:600;color:#a07820;text-transform:uppercase;letter-spacing:.05em">Finance Targets:</span>
+      <div class="fin-goal-item"><label>2026 ACV Goal</label><input class="fin-goal-input" id="gACV" type="text" placeholder="$0" oninput="saveGoals()" onfocus="clearFmt(this)" onblur="applyFmt(this,'gACV')"></div>
+      <div class="fin-goal-item"><label>2026 Exit CARR Goal</label><input class="fin-goal-input" id="gCARR26" type="text" placeholder="$0" oninput="saveGoals()" onfocus="clearFmt(this)" onblur="applyFmt(this,'gCARR26')"></div>
+      <div class="fin-goal-item"><label>2025 Exit CARR</label><input class="fin-goal-input" id="gCARR25" type="text" placeholder="$0" oninput="saveGoals()" onfocus="clearFmt(this)" onblur="applyFmt(this,'gCARR25')"></div>
+      <span style="font-size:10px;color:var(--text3);margin-left:4px">Goals are saved locally to your browser.</span>
+    </div>
+  </div>
+
+  <!-- Finance Summary KPIs (visible in finance mode) -->
+  <div id="finSummary" style="display:none"></div>
 
   <div id="app">
     <div class="state">
@@ -235,6 +279,9 @@ var DEALS = [];
 var filtered = [];
 var sortCol = "amount", sortDir = -1, currentPage = 1, PAGE_SIZE = 25;
 var fetchedAt = null;
+var financeMode = false;
+var finData = {};  // keyed by deal id: {impl, recur, svc}
+var finGoals = {acv: 0, carr26: 0, carr25: 0};
 
 function q(d){var m=d.getMonth(),y=d.getFullYear();return "Q"+(Math.floor(m/3)+1)+" "+y}
 function fmt(n){if(n>=1000000)return "$"+(n/1000000).toFixed(1)+"M";if(n>=1000)return "$"+Math.round(n/1000)+"K";return n>0?"$"+n:"—"}
@@ -254,6 +301,129 @@ function probClass(p){
   if(p>=.9)return "pb90";if(p>=.6)return "pb60";if(p>=.4)return "pb40";
   if(p>=.3)return "pb30";if(p>=.2)return "pb20";if(p>=.1)return "pb10";return "pb3";
 }
+
+// ── Finance helpers ──────────────────────────────────────────────────────────
+function loadFinStorage() {
+  try {
+    var g = localStorage.getItem('cpiq-fin-goals');
+    if(g) finGoals = JSON.parse(g);
+    DEALS.forEach(function(d) {
+      var s = localStorage.getItem('cpiq-fin-'+d.id);
+      if(s) finData[d.id] = JSON.parse(s);
+    });
+  } catch(e) {}
+  // Restore goals inputs
+  var fields = {gACV:'acv',gCARR26:'carr26',gCARR25:'carr25'};
+  Object.keys(fields).forEach(function(id) {
+    var el = document.getElementById(id);
+    if(el && finGoals[fields[id]]) el.value = fmtGoalDisplay(finGoals[fields[id]]);
+  });
+}
+
+function fmtGoalDisplay(n) {
+  if(!n) return '';
+  return '$' + Number(n).toLocaleString();
+}
+
+function parseGoalInput(val) {
+  return parseFloat(String(val).replace(/[$,]/g,'')) || 0;
+}
+
+function clearFmt(el) { if(el.value) el.value = parseGoalInput(el.value) || ''; }
+function applyFmt(el, id) {
+  var n = parseGoalInput(el.value);
+  if(n) el.value = fmtGoalDisplay(n);
+  saveGoals();
+}
+
+function saveGoals() {
+  finGoals = {
+    acv: parseGoalInput((document.getElementById('gACV')||{}).value),
+    carr26: parseGoalInput((document.getElementById('gCARR26')||{}).value),
+    carr25: parseGoalInput((document.getElementById('gCARR25')||{}).value),
+  };
+  try { localStorage.setItem('cpiq-fin-goals', JSON.stringify(finGoals)); } catch(e) {}
+  renderFinanceSummary();
+}
+
+function saveFinField(el) {
+  var id = el.dataset.id;
+  var field = el.dataset.field;
+  var val = parseFloat(el.value) || 0;
+  if(!finData[id]) finData[id] = {impl:0, recur:0, svc:0};
+  finData[id][field] = val;
+  try { localStorage.setItem('cpiq-fin-'+id, JSON.stringify(finData[id])); } catch(e) {}
+  updateFinRowCalcs(id);
+  renderFinanceSummary();
+}
+
+function updateFinRowCalcs(id) {
+  var row = document.querySelector('tr[data-row-id="'+id+'"]');
+  if(!row) return;
+  var fd = finData[id] || {impl:0, recur:0, svc:0};
+  var deal = DEALS.filter(function(d){return d.id==id})[0];
+  if(!deal) return;
+  var acv = fd.impl + fd.recur;
+  var wACV = Math.round(acv * deal.prob);
+  var svcD = Math.round(fd.recur * fd.svc / 100);
+  var swD = Math.round(fd.recur * (1 - fd.svc/100));
+  var cell = function(cls, val) {
+    var el = row.querySelector('.'+cls);
+    if(el) el.textContent = val > 0 ? fmt(val) : '—';
+  };
+  cell('fc-acv', acv); cell('fc-wacv', wACV);
+  cell('fc-svc', svcD); cell('fc-sw', swD);
+}
+
+function getFinTotals(deals) {
+  var impl=0, recur=0, acv=0, wACV=0, svc=0, sw=0;
+  deals.forEach(function(d) {
+    var fd = finData[d.id] || {impl:0, recur:0, svc:0};
+    var a = fd.impl + fd.recur;
+    impl += fd.impl; recur += fd.recur; acv += a;
+    wACV += Math.round(a * d.prob);
+    svc  += Math.round(fd.recur * fd.svc/100);
+    sw   += Math.round(fd.recur * (1-fd.svc/100));
+  });
+  return {impl:impl, recur:recur, acv:acv, wACV:wACV, svc:svc, sw:sw};
+}
+
+function renderFinanceSummary() {
+  var el = document.getElementById('finSummary');
+  if(!el) return;
+  if(!financeMode) { el.style.display='none'; return; }
+  el.style.display='';
+  var t = getFinTotals(filtered);
+  var acvPct = finGoals.acv > 0 ? Math.min(Math.round(t.acv/finGoals.acv*100), 200) : 0;
+  var carr26Pct = finGoals.carr26 > 0 ? Math.min(Math.round(t.recur/finGoals.carr26*100), 200) : 0;
+  function fk(label, val, sub, pct, isGoal) {
+    var bar = pct !== undefined ? '<div class="fin-prog"><div class="fin-prog-fill'+(pct>=100?' over':'') +'" style="width:'+Math.min(pct,100)+'%"></div></div>' : '';
+    return '<div class="fin-kpi'+(isGoal?' goal':'')+'"><div class="kl">'+label+'</div><div class="kv">'+fmt(val)+'</div>'+(sub?'<div class="ks">'+sub+'</div>':'')+bar+'</div>';
+  }
+  el.innerHTML = '<div class="sth">Finance Summary</div><div class="fin-summary">'
+    + fk('Total ACV', t.acv, finGoals.acv>0 ? acvPct+'% of '+fmt(finGoals.acv)+' goal' : 'Set ACV goal above', acvPct, true)
+    + fk('Weighted ACV', t.wACV, 'Prob-adjusted ACV')
+    + fk('Total Recurring Rev', t.recur, finGoals.carr26>0 ? carr26Pct+'% of '+fmt(finGoals.carr26)+' CARR goal' : '', carr26Pct, true)
+    + fk('Impl Fees (One-Time)', t.impl, 'Non-recurring')
+    + fk('Service Revenue', t.svc, 'Recurring × Service %')
+    + fk('Software Revenue', t.sw, 'Recurring × (1 − Svc %)')
+    + (finGoals.carr25>0 ? fk('2025 Exit CARR', finGoals.carr25, 'Prior year baseline') : '')
+    + '</div>';
+}
+
+function toggleFinanceMode() {
+  financeMode = !financeMode;
+  try { localStorage.setItem('cpiq-finance-mode','on'); } catch(e) {}
+  var btn = document.getElementById('finBtn');
+  if(btn) { btn.textContent = financeMode ? '✕ Exit Finance View' : '$ Finance View'; btn.classList.toggle('active', financeMode); }
+  var panel = document.getElementById('finPanel');
+  if(panel) panel.classList.toggle('visible', financeMode);
+  renderFinanceSummary();
+  renderTHead();
+  renderTable();
+}
+
+// ── End finance helpers ───────────────────────────────────────────────────────
 
 async function loadData() {
   var icon = document.getElementById("refreshIcon");
@@ -289,6 +459,7 @@ async function loadData() {
 
     document.getElementById("app").innerHTML = buildUI();
     attachEvents();
+    loadFinStorage();
     go();
 
   } catch(err) {
@@ -346,6 +517,15 @@ var COLS = [
   {key:"ownerName",label:"Owner"},
   {key:"closedate",label:"Close Date"},
 ];
+var FIN_COLS = [
+  {key:"impl",label:"Impl Fee",fin:true},
+  {key:"recur",label:"Recurring Rev",fin:true},
+  {key:"svc",label:"Svc %",fin:true},
+  {key:"acv",label:"Total ACV",fin:true,calc:true},
+  {key:"wacv",label:"Wtd ACV",fin:true,calc:true},
+  {key:"svcd",label:"Service $",fin:true,calc:true},
+  {key:"sw",label:"Software $",fin:true,calc:true},
+];
 
 function attachEvents() {
   // Re-wire filter controls after DOM rebuild
@@ -388,7 +568,7 @@ function srt(col){
   renderTHead();
 }
 
-function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();}
+function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();renderFinanceSummary();}
 
 function renderKPIs(){
   var d = filtered;
@@ -535,7 +715,21 @@ function renderTable(){
     var odf = d.overdue ? '<span class="odf">&#9650; Overdue</span>' :
               (days!==null&&days<=60 ? '<span class="urgf">('+days+'d)</span>' : "");
     var url = "https://app.hubspot.com/contacts/39921549/record/0-3/"+d.id;
-    return '<tr class="'+rc+'">'+
+    var fd = finData[d.id] || {impl:0, recur:0, svc:0};
+    var acv = fd.impl + fd.recur;
+    var wACV = Math.round(acv * d.prob);
+    var svcD = Math.round(fd.recur * fd.svc/100);
+    var swD  = Math.round(fd.recur * (1-fd.svc/100));
+    var finRow = financeMode ? (
+      '<td class="fin-td"><input class="fin-input" type="number" data-id="'+d.id+'" data-field="impl" value="'+fd.impl+'" onblur="saveFinField(this)"></td>'+
+      '<td class="fin-td"><input class="fin-input" type="number" data-id="'+d.id+'" data-field="recur" value="'+fd.recur+'" onblur="saveFinField(this)"></td>'+
+      '<td class="fin-td" style="text-align:right"><input class="fin-input" type="number" min="0" max="100" data-id="'+d.id+'" data-field="svc" value="'+fd.svc+'" onblur="saveFinField(this)" style="width:44px"> %</td>'+
+      '<td class="fin-td fin-calc fc-acv">'+(acv>0?fmt(acv):"—")+'</td>'+
+      '<td class="fin-td fin-calc fc-wacv">'+(wACV>0?fmt(wACV):"—")+'</td>'+
+      '<td class="fin-td fin-calc fc-svc">'+(svcD>0?fmt(svcD):"—")+'</td>'+
+      '<td class="fin-td fin-calc fc-sw">'+(swD>0?fmt(swD):"—")+'</td>'
+    ) : '';
+    return '<tr class="'+rc+'" data-row-id="'+d.id+'">'+
       '<td><a class="dl dn" href="'+url+'" target="_blank" title="'+escHtml(d.dealname)+'">'+escHtml(d.dealname)+'</a></td>'+
       '<td><span class="pp '+pc+'">'+d.pipeLabel+'</span></td>'+
       '<td style="white-space:nowrap">'+d.stage+'</td>'+
@@ -544,6 +738,7 @@ function renderTable(){
       '<td class="monum" style="color:var(--green)">'+(d.weighted>0?fmt(d.weighted):"&mdash;")+'</td>'+
       '<td>'+d.ownerName+'</td>'+
       '<td style="white-space:nowrap">'+cs+odf+'</td>'+
+      finRow+
       '</tr>';
   }).join("") || '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">No deals match filters</td></tr>';
 
@@ -582,9 +777,19 @@ function doExport(){
     if(typeof av==="string") return av.localeCompare(bv)*sortDir;
     return (av-bv)*sortDir;
   });
-  var rows = [["Deal Name","Pipeline","Stage","Amount","Probability","Weighted","Owner","Close Date","Overdue"]];
+  var baseHdr = ["Deal Name","Pipeline","Stage","Amount","Probability","Weighted","Owner","Close Date","Overdue"];
+  var finHdr  = financeMode ? ["Impl Fee","Recurring Rev","Svc %","Total ACV","Wtd ACV","Service $","Software $"] : [];
+  var rows = [baseHdr.concat(finHdr)];
   sorted.forEach(function(d){
-    rows.push(['"'+d.dealname.replace(/,/g," ")+'"',d.pipeLabel,d.stage,d.amount,Math.round(d.prob*100)+"%",d.weighted,d.ownerName,d.closedate,d.overdue?"Yes":"No"]);
+    var base = ['"'+d.dealname.replace(/,/g," ")+'"',d.pipeLabel,d.stage,d.amount,Math.round(d.prob*100)+"%",d.weighted,d.ownerName,d.closedate,d.overdue?"Yes":"No"];
+    var fin = [];
+    if(financeMode) {
+      var fd = finData[d.id]||{impl:0,recur:0,svc:0};
+      var acv=fd.impl+fd.recur, wACV=Math.round(acv*d.prob);
+      var svcD=Math.round(fd.recur*fd.svc/100), swD=Math.round(fd.recur*(1-fd.svc/100));
+      fin = [fd.impl, fd.recur, fd.svc+"%", acv, wACV, svcD, swD];
+    }
+    rows.push(base.concat(fin));
   });
   var a = document.createElement("a");
   a.href = "data:text/csv;charset=utf-8,"+encodeURIComponent(rows.map(function(r){return r.join(",")}).join("\n"));
