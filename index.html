@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Forecast — Care Continuity</title>
+<style>
+:root{
+  --bg:#111318;--panel:#1c1f26;--sec:#22262f;--hover:#272b35;
+  --border:#2e3340;--borderl:#383d4a;
+  --text:#e8eaf0;--text2:#9ba3b4;--text3:#5c6478;
+  --accent:#4f8ef7;--acl:rgba(79,142,247,.12);
+  --green:#34c97a;--red:#f05252;--redl:rgba(240,82,82,.12);
+  --amber:#f5a623;--purple:#a78bfa;--purpl:rgba(167,139,250,.12);
+  --mono:"DM Mono",monospace;--r:6px;--rl:10px;
+}
+body.light{
+  --bg:#F0EDE8;--panel:#E8E4DE;--sec:#DDD9D2;--hover:#D5D0C9;
+  --border:#C8C3BC;--borderl:#B8B3AB;
+  --text:#2A2724;--text2:#5A5550;--text3:#8A8580;
+  --accent:#2F6FD4;--acl:rgba(47,111,212,.10);
+  --green:#1E8A4A;--red:#C0392B;--redl:rgba(192,57,43,.10);
+  --amber:#A0620A;--purple:#6B4FA0;--purpl:rgba(107,79,160,.10);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;transition:background .2s,color .2s}
+.page{max-width:1400px;margin:0 auto;padding:24px}
+
+/* Header */
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.pt{font-size:20px;font-weight:600}
+.ps{font-size:11px;color:var(--text3);margin-top:2px}
+.hc{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,input{background:var(--sec);border:1px solid var(--borderl);color:var(--text2);font-size:11px;padding:5px 10px;border-radius:var(--r);cursor:pointer}
+.btn{background:var(--acl);border:1px solid rgba(79,142,247,.3);color:var(--accent);font-size:11px;padding:5px 12px;border-radius:var(--r);cursor:pointer;font-weight:500}
+.btn:hover{background:rgba(79,142,247,.2)}
+.refresh-btn{display:flex;align-items:center;gap:5px}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Loading / Error states */
+.state{padding:60px;text-align:center}
+.state-title{font-size:16px;font-weight:600;margin-bottom:8px}
+.state-sub{font-size:12px;color:var(--text3)}
+.loader{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px}
+.error-box{background:var(--redl);border:1px solid rgba(240,82,82,.3);border-radius:var(--rl);padding:16px;max-width:500px;margin:0 auto;text-align:left}
+.error-box .et{font-weight:600;color:var(--red);margin-bottom:4px}
+.error-box .em{font-size:11px;color:var(--text2)}
+
+/* Legend */
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:var(--panel);border:1px solid var(--border);border-radius:var(--rl)}
+.leg-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
+.leg-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px}
+.kl{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.kv{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
+.kv.g{color:var(--green)}.kv.a{color:var(--amber)}.kv.b{color:var(--accent)}.kv.r{color:var(--red)}.kv.dim{color:var(--text3)}
+.ks{font-size:9px;color:var(--text3);margin-top:2px}
+.sth{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin:20px 0 10px}
+
+/* Pipeline grid */
+.pg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px}
+@media(max-width:900px){.pg{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.pg{grid-template-columns:1fr}}
+.pc{background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+.ph2{padding:12px 14px;border-bottom:1px solid var(--border);background:var(--sec);display:flex;justify-content:space-between;align-items:center}
+.pn{font-size:12px;font-weight:600}.pm{font-size:10px;color:var(--text3)}
+.sr{padding:7px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.sr:last-child{border-bottom:none}
+.sd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sn{font-size:11px;color:var(--text2);flex:1}
+.sc{font-size:10px;color:var(--text3);width:28px;text-align:right}
+.sa{font-size:11px;width:80px;text-align:right;font-family:var(--mono)}
+.sw{font-size:10px;color:var(--green);width:75px;text-align:right;font-family:var(--mono)}
+.sp2{font-size:10px;color:var(--text3);width:32px;text-align:right}
+.sbt{width:70px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.sbf{height:100%;border-radius:2px}
+
+/* Quarter grid */
+.qg{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:10px;margin-bottom:20px}
+.qc{background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px}
+.qc.cur{border-color:rgba(79,142,247,.4);background:var(--acl)}
+.qc.od{border-color:rgba(240,82,82,.3);background:var(--redl)}
+.ql{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.qc.cur .ql{color:var(--accent)}.qc.od .ql{color:var(--red)}
+.qr{font-size:18px;font-weight:600;font-family:var(--mono)}
+.qw{font-size:12px;color:var(--green);font-family:var(--mono);margin-top:2px}
+.qct{font-size:10px;color:var(--text3);margin-top:4px}
+
+/* Rep grid */
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:20px}
+.rc{background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px}
+.rn{font-size:13px;font-weight:600;margin-bottom:8px}
+.rst{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
+.rstl{color:var(--text2)}.rstv{font-family:var(--mono)}
+.rstv.g{color:var(--green)}.rstv.a{color:var(--amber)}
+
+/* Table */
+.tw{background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:12px}
+.tc2{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--sec);flex-wrap:wrap}
+table{width:100%;border-collapse:collapse}
+th{padding:7px 12px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border);text-align:left;background:var(--sec);white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{color:var(--text)}
+th .sa2{display:inline-block;margin-left:5px;width:10px;text-align:center;opacity:.35;font-size:10px}
+th.sort-active{color:var(--text)}
+th.sort-active .sa2{opacity:1;color:var(--accent)}
+td{padding:8px 12px;font-size:11px;color:var(--text2);border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--hover) !important}
+
+/* Row shading */
+tr.row-overdue td{background:rgba(240,82,82,.12)}
+tr.row-overdue:hover td{background:rgba(240,82,82,.2) !important}
+tr.row-urgent td{background:rgba(240,82,82,.07)}
+tr.row-urgent:hover td{background:rgba(240,82,82,.14) !important}
+tr.row-hot td{background:rgba(52,201,122,.07)}
+tr.row-hot:hover td{background:rgba(52,201,122,.14) !important}
+tr.row-closing-soon td{background:rgba(79,142,247,.07)}
+tr.row-closing-soon:hover td{background:rgba(79,142,247,.14) !important}
+tr.row-warm td{background:rgba(245,166,35,.06)}
+tr.row-warm:hover td{background:rgba(245,166,35,.12) !important}
+
+.dn{color:var(--text);font-weight:500;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl{color:var(--accent);text-decoration:none}.dl:hover{text-decoration:underline}
+.pb{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;border:1px solid transparent}
+.pb90{background:rgba(52,201,122,.25);color:var(--green);border-color:rgba(52,201,122,.4)}
+.pb60{background:rgba(79,250,142,.18);color:#5cd69a;border-color:rgba(79,250,142,.3)}
+.pb40{background:rgba(245,166,35,.2);color:var(--amber);border-color:rgba(245,166,35,.35)}
+.pb30{background:rgba(79,142,247,.18);color:var(--accent);border-color:rgba(79,142,247,.3)}
+.pb20{background:var(--hover);color:var(--text2);border-color:var(--borderl)}
+.pb10,.pb5,.pb3{background:var(--hover);color:var(--text3);border-color:var(--border)}
+.pp{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;text-transform:uppercase}
+.ppo{background:var(--purpl);color:var(--purple)}
+.ppd{background:var(--acl);color:var(--accent)}
+.ppe{background:rgba(52,201,122,.12);color:var(--green)}
+.odf{color:var(--red);font-size:9px;margin-left:4px}
+.urgf{color:var(--amber);font-size:9px;margin-left:4px}
+.monum{font-family:var(--mono);text-align:right;white-space:nowrap}
+
+/* Pagination */
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);margin-bottom:20px;flex-wrap:wrap;gap:8px}
+.pg-info{font-size:11px;color:var(--text3)}
+.pg-controls{display:flex;gap:4px;align-items:center}
+.pg-btn{background:var(--sec);border:1px solid var(--borderl);color:var(--text2);font-size:11px;padding:4px 9px;border-radius:var(--r);cursor:pointer;min-width:32px;text-align:center}
+.pg-btn:hover:not(:disabled){background:var(--hover);color:var(--text)}
+.pg-btn:disabled{opacity:.35;cursor:not-allowed}
+.pg-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pg-per{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="ph">
+    <div>
+      <div class="pt">Pipeline Forecast Report</div>
+      <div class="ps" id="subtitle">Opportunity + Deal + Expansion Pipelines &nbsp;·&nbsp; Care Continuity &nbsp;·&nbsp; Live from HubSpot</div>
+    </div>
+    <div class="hc">
+      <select id="pf" onchange="go()">
+        <option value="all">All Pipelines</option>
+        <option value="opp">Opportunity</option>
+        <option value="deal">Deal</option>
+        <option value="exp">Expansion</option>
+      </select>
+      <select id="rf" onchange="go()">
+        <option value="all">All Reps</option>
+        <option value="Matt Valin">Matt Valin</option>
+        <option value="Joe Haine">Joe Haine</option>
+        <option value="Tim Grisham">Tim Grisham</option>
+        <option value="Chris Knapp">Chris Knapp</option>
+        <option value="Chiara Pate">Chiara Pate</option>
+      </select>
+      <select id="cf" onchange="go()">
+        <option value="all">All Close Dates</option>
+        <option value="overdue">Overdue</option>
+        <option value="Q3 2026">Q3 2026</option>
+        <option value="Q4 2026">Q4 2026</option>
+        <option value="Q1 2027">Q1 2027</option>
+        <option value="future">Q2 2027+</option>
+      </select>
+      <input id="sb" type="text" placeholder="Search deals..." oninput="go()" style="width:150px">
+      <button class="btn refresh-btn" onclick="loadData()"><span id="refreshIcon">&#8635;</span> Refresh</button>
+      <button class="btn" onclick="doExport()">Export CSV</button>
+      <button id="themeBtn" class="btn" onclick="toggleTheme()" style="min-width:80px">&#9728; Light</button>
+    </div>
+  </div>
+
+  <div id="app">
+    <div class="state">
+      <div class="loader"></div>
+      <div class="state-title">Loading pipeline data...</div>
+      <div class="state-sub">Fetching live deals from HubSpot</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var STAGES = {
+  "995708483":{name:"Target Identified",prob:.03,pl:"679336808"},
+  "995708484":{name:"Initial Outreach",prob:.05,pl:"679336808"},
+  "1284036410":{name:"Email Opened/No Reply",prob:.10,pl:"679336808"},
+  "1288757038":{name:"Reengagement Needed",prob:.20,pl:"679336808"},
+  "995708485":{name:"Engaged",prob:.05,pl:"679336808"},
+  "996311842":{name:"Trade Show Follow-Up",prob:.10,pl:"679336808"},
+  "995708486":{name:"Meeting Scheduled",prob:.05,pl:"679336808"},
+  "995708487":{name:"Meeting Completed",prob:.10,pl:"679336808"},
+  "995708488":{name:"Qualified",prob:.10,pl:"679336808"},
+  "1331034125":{name:"Partnership Opportunity",prob:.10,pl:"679336808"},
+  "995756094":{name:"Qualified",prob:.10,pl:"678610513"},
+  "995756095":{name:"Problem Solution Fit",prob:.20,pl:"678610513"},
+  "995756096":{name:"Value Prop / Scoping",prob:.30,pl:"678610513"},
+  "995756097":{name:"Pricing Proposal",prob:.40,pl:"678610513"},
+  "995756098":{name:"IT / Technical Review",prob:.60,pl:"678610513"},
+  "995756099":{name:"Contracting / Legal",prob:.90,pl:"678610513"},
+  "995723921":{name:"Expansion Targets",prob:.15,pl:"679502246"},
+  "995723922":{name:"Engaged",prob:.25,pl:"679502246"},
+  "995723923":{name:"Value Prop / Scoping",prob:.35,pl:"679502246"},
+  "995723924":{name:"Pricing Proposal",prob:.50,pl:"679502246"},
+  "995723926":{name:"Procurement / Contracting",prob:.85,pl:"679502246"},
+};
+var OWNERS = {
+  "76104455":"Matt Valin","55217954":"Joe Haine","83862037":"Tim Grisham",
+  "78304576":"Chris Knapp","87806380":"Chiara Pate","597457566":"(Former)",
+};
+
+var TODAY = new Date();
+TODAY.setHours(0,0,0,0);
+
+var DEALS = [];
+var filtered = [];
+var sortCol = "amount", sortDir = -1, currentPage = 1, PAGE_SIZE = 25;
+var fetchedAt = null;
+
+function q(d){var m=d.getMonth(),y=d.getFullYear();return "Q"+(Math.floor(m/3)+1)+" "+y}
+function fmt(n){if(n>=1000000)return "$"+(n/1000000).toFixed(1)+"M";if(n>=1000)return "$"+Math.round(n/1000)+"K";return n>0?"$"+n:"—"}
+function daysUntil(d){return Math.round((d-TODAY)/(864e5))}
+function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+
+function rowClass(d){
+  if(d.overdue) return "row-overdue";
+  var days = daysUntil(new Date(d.closedate));
+  if(d.prob>=.4) return "row-hot";
+  if(days<=60) return "row-urgent";
+  if(days<=90) return "row-closing-soon";
+  if((d.closeQ==="Q3 2026"||d.closeQ==="Q4 2026")&&d.amount>0) return "row-warm";
+  return "";
+}
+function probClass(p){
+  if(p>=.9)return "pb90";if(p>=.6)return "pb60";if(p>=.4)return "pb40";
+  if(p>=.3)return "pb30";if(p>=.2)return "pb20";if(p>=.1)return "pb10";return "pb3";
+}
+
+async function loadData() {
+  var icon = document.getElementById("refreshIcon");
+  if(icon) icon.className = "spin";
+
+  try {
+    var res = await fetch("/.netlify/functions/pipeline-data");
+    if(!res.ok) throw new Error("HTTP " + res.status + ": " + await res.text());
+    var data = await res.json();
+
+    fetchedAt = data.fetchedAt;
+
+    DEALS = data.deals.map(function(d){
+      var s = STAGES[d.dealstage] || {name:"Unknown", prob:0};
+      var close = d.closedate ? new Date(d.closedate) : null;
+      var pipeLabel = d.pipeline==="679336808"?"Opportunity":d.pipeline==="679502246"?"Expansion":"Deal";
+      return Object.assign({}, d, {
+        stage: s.name,
+        prob: s.prob,
+        weighted: Math.round(d.amount * s.prob),
+        closeQ: close ? q(close) : "Unknown",
+        overdue: close ? close < TODAY : false,
+        ownerName: OWNERS[d.owner] || d.owner || "Unassigned",
+        pipeLabel: pipeLabel,
+      });
+    });
+
+    // Update subtitle with fetch time
+    var ts = fetchedAt ? new Date(fetchedAt).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "";
+    document.getElementById("subtitle").innerHTML =
+      "Opportunity + Deal + Expansion &nbsp;&middot;&nbsp; " + DEALS.length + " active deals &nbsp;&middot;&nbsp; Live from HubSpot" +
+      (ts ? " &nbsp;&middot;&nbsp; Updated " + ts : "");
+
+    document.getElementById("app").innerHTML = buildUI();
+    attachEvents();
+    go();
+
+  } catch(err) {
+    document.getElementById("app").innerHTML =
+      '<div class="state"><div class="error-box"><div class="et">Failed to load pipeline data</div><div class="em">' +
+      escHtml(err.message) + '</div></div></div>';
+  } finally {
+    if(icon) icon.className = "";
+  }
+}
+
+function buildUI() {
+  return [
+    '<div class="legend">',
+    '<span style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-right:4px">Row shading:</span>',
+    '<span class="leg-item"><div class="leg-swatch" style="background:rgba(240,82,82,.25);border:1px solid rgba(240,82,82,.5)"></div>Overdue</span>',
+    '<span class="leg-item"><div class="leg-swatch" style="background:rgba(240,82,82,.14);border:1px solid rgba(240,82,82,.3)"></div>Closing &lt;60 days</span>',
+    '<span class="leg-item"><div class="leg-swatch" style="background:rgba(52,201,122,.14);border:1px solid rgba(52,201,122,.3)"></div>40%+ confidence</span>',
+    '<span class="leg-item"><div class="leg-swatch" style="background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.3)"></div>Near-term Q3/Q4</span>',
+    '<span class="leg-item"><div class="leg-swatch" style="background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.3)"></div>Closing &lt;90 days</span>',
+    '</div>',
+    '<div class="kpis" id="kpis"></div>',
+    '<div class="sth">By Pipeline</div>',
+    '<div class="pg" id="pgrid"></div>',
+    '<div class="sth">Forecast by Close Quarter</div>',
+    '<div class="qg" id="qgrid"></div>',
+    '<div class="sth">By Rep</div>',
+    '<div class="rg" id="rgrid"></div>',
+    '<div class="tw">',
+    '  <div class="tc2">',
+    '    <div class="sth" style="margin:0">All Active Deals</div>',
+    '    <span id="cnt" style="font-size:10px;color:var(--text3)"></span>',
+    '    <div class="pg-per" style="margin-left:auto">Rows per page:',
+    '      <select id="perPage" onchange="go()" style="padding:3px 6px">',
+    '        <option value="25">25</option><option value="50">50</option>',
+    '        <option value="100">100</option><option value="9999">All</option>',
+    '      </select>',
+    '    </div>',
+    '  </div>',
+    '  <div style="overflow-x:auto">',
+    '  <table><thead><tr id="thead"></tr></thead><tbody id="tb"></tbody></table>',
+    '  </div>',
+    '</div>',
+    '<div class="pagination" id="paginationBar"></div>',
+  ].join("");
+}
+
+var COLS = [
+  {key:"dealname",label:"Deal"},
+  {key:"pipeLabel",label:"Pipeline"},
+  {key:"stage",label:"Stage"},
+  {key:"amount",label:"Amount",right:true},
+  {key:"prob",label:"Prob",right:true},
+  {key:"weighted",label:"Weighted",right:true},
+  {key:"ownerName",label:"Owner"},
+  {key:"closedate",label:"Close Date"},
+];
+
+function attachEvents() {
+  // Re-wire filter controls after DOM rebuild
+  ["pf","rf","cf","sb","perPage"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener(el.tagName==="INPUT"?"input":"change", go);
+  });
+}
+
+function go() {
+  PAGE_SIZE = parseInt((document.getElementById("perPage")||{}).value||25);
+  var pf = (document.getElementById("pf")||{}).value||"all";
+  var rf = (document.getElementById("rf")||{}).value||"all";
+  var cf = (document.getElementById("cf")||{}).value||"all";
+  var sb = ((document.getElementById("sb")||{}).value||"").toLowerCase();
+
+  filtered = DEALS.filter(function(d){
+    if(pf==="opp"&&d.pipeline!=="679336808") return false;
+    if(pf==="deal"&&d.pipeline!=="678610513") return false;
+    if(pf==="exp"&&d.pipeline!=="679502246") return false;
+    if(rf!=="all"&&d.ownerName!==rf) return false;
+    if(cf==="overdue"&&!d.overdue) return false;
+    if(cf==="Q3 2026"&&d.closeQ!=="Q3 2026") return false;
+    if(cf==="Q4 2026"&&d.closeQ!=="Q4 2026") return false;
+    if(cf==="Q1 2027"&&d.closeQ!=="Q1 2027") return false;
+    if(cf==="future"&&!d.overdue&&["Q3 2026","Q4 2026","Q1 2027"].indexOf(d.closeQ)>-1) return false;
+    if(sb&&d.dealname.toLowerCase().indexOf(sb)===-1) return false;
+    return true;
+  });
+
+  currentPage = 1;
+  render();
+}
+
+function srt(col){
+  if(sortCol===col) sortDir*=-1; else{sortCol=col;sortDir=-1;}
+  currentPage = 1;
+  renderTable();
+  renderTHead();
+}
+
+function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();}
+
+function renderKPIs(){
+  var d = filtered;
+  var raw = d.reduce(function(s,x){return s+x.amount},0);
+  var wtd = d.reduce(function(s,x){return s+x.weighted},0);
+  var h2 = d.filter(function(x){return !x.overdue&&(x.closeQ==="Q3 2026"||x.closeQ==="Q4 2026")});
+  var h2w = h2.reduce(function(s,x){return s+x.weighted},0);
+  var hc = d.filter(function(x){return x.prob>=.4}).reduce(function(s,x){return s+x.weighted},0);
+  var od = d.filter(function(x){return x.overdue}).length;
+  var zero = d.filter(function(x){return x.amount===0}).length;
+  function kp(l,v,s,cls){
+    return '<div class="kpi"><div class="kl">'+l+'</div><div class="kv '+cls+'">'+v+'</div><div class="ks">'+s+'</div></div>';
+  }
+  document.getElementById("kpis").innerHTML =
+    kp("Total Pipeline",fmt(raw),d.length+" active deals","")+
+    kp("Weighted Forecast",fmt(wtd),"Prob-adjusted","g")+
+    kp("H2 2026 Weighted",fmt(h2w),h2.length+" deals closing Q3-Q4","a")+
+    kp("High Confidence 40%+",fmt(hc),d.filter(function(x){return x.prob>=.4}).length+" deals","b")+
+    kp("Overdue",od,"Past close date","r")+
+    kp("$0 Placeholders",zero,"No amount set","dim");
+}
+
+function renderPipelines(){
+  var pips = [
+    {id:"679336808",label:"New Business Opportunity",stages:["995708483","995708484","1284036410","1288757038","995708485","996311842","995708486","995708487","995708488","1331034125"]},
+    {id:"678610513",label:"New Business Deal",stages:["995756094","995756095","995756096","995756097","995756098","995756099"]},
+    {id:"679502246",label:"Expansion Deal",stages:["995723921","995723922","995723923","995723924","995723926"]},
+  ];
+  var colors = ["#4f8ef7","#34c97a","#f5a623","#a78bfa","#f05252","#5cd6c0","#e8a838","#7cb9f7","#f78cb9","#9ef7a0"];
+  var out = "";
+  pips.forEach(function(p){
+    var pd = filtered.filter(function(d){return d.pipeline===p.id});
+    var raw = pd.reduce(function(s,x){return s+x.amount},0);
+    var wtd = pd.reduce(function(s,x){return s+x.weighted},0);
+    var maxA = Math.max(1,Math.max.apply(null,p.stages.map(function(s){
+      return pd.filter(function(d){return d.dealstage===s}).reduce(function(sum,x){return sum+x.amount},0);
+    })));
+    var rows = p.stages.map(function(sid,si){
+      var sd = pd.filter(function(d){return d.dealstage===sid});
+      var r = sd.reduce(function(s,x){return s+x.amount},0);
+      var w = sd.reduce(function(s,x){return s+x.weighted},0);
+      var pr = STAGES[sid]?STAGES[sid].prob:0;
+      var c = colors[si%colors.length];
+      return '<div class="sr"><div class="sd" style="background:'+c+'"></div>'+
+        '<div class="sn">'+(STAGES[sid]?STAGES[sid].name:sid)+'</div>'+
+        '<div class="sc">'+sd.length+'</div>'+
+        '<div class="sa" style="color:var(--text)">'+(r>0?fmt(r):"&mdash;")+'</div>'+
+        '<div class="sw">'+(w>0?fmt(w):"&mdash;")+'</div>'+
+        '<div class="sp2">'+Math.round(pr*100)+'%</div>'+
+        '<div class="sbt"><div class="sbf" style="width:'+Math.round(r/maxA*100)+'%;background:'+c+'"></div></div>'+
+        '</div>';
+    }).join("");
+    out += '<div class="pc">'+
+      '<div class="ph2">'+
+        '<div><div class="pn">'+p.label+'</div><div class="pm">'+pd.length+' active deals</div></div>'+
+        '<div style="text-align:right"><div style="font-size:14px;font-weight:600;font-family:var(--mono)">'+fmt(raw)+'</div>'+
+        '<div style="font-size:10px;color:var(--green);font-family:var(--mono)">&rarr; '+fmt(wtd)+' weighted</div></div>'+
+      '</div>'+
+      '<div style="display:flex;padding:4px 14px;border-bottom:1px solid var(--border)">'+
+        '<div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;flex:1">Stage</div>'+
+        '<div style="font-size:9px;color:var(--text3);width:28px;text-align:right">#</div>'+
+        '<div style="font-size:9px;color:var(--text3);width:80px;text-align:right">Raw</div>'+
+        '<div style="font-size:9px;color:var(--text3);width:75px;text-align:right">Weighted</div>'+
+        '<div style="font-size:9px;color:var(--text3);width:32px;text-align:right">Prob</div>'+
+        '<div style="width:70px"></div>'+
+      '</div>'+
+      rows+'</div>';
+  });
+  document.getElementById("pgrid").innerHTML = out;
+}
+
+function renderQuarters(){
+  var qs = ["Overdue","Q3 2026","Q4 2026","Q1 2027","Q2 2027+"];
+  document.getElementById("qgrid").innerHTML = qs.map(function(qname){
+    var d;
+    if(qname==="Overdue") d=filtered.filter(function(x){return x.overdue});
+    else if(qname==="Q2 2027+") d=filtered.filter(function(x){return !x.overdue&&["Q3 2026","Q4 2026","Q1 2027"].indexOf(x.closeQ)===-1});
+    else d=filtered.filter(function(x){return !x.overdue&&x.closeQ===qname});
+    var raw=d.reduce(function(s,x){return s+x.amount},0);
+    var wtd=d.reduce(function(s,x){return s+x.weighted},0);
+    var cls=qname==="Overdue"?"od":(qname==="Q3 2026"||qname==="Q4 2026"?"cur":"");
+    return '<div class="qc '+cls+'"><div class="ql">'+qname+'</div>'+
+      '<div class="qr">'+fmt(raw)+'</div>'+
+      '<div class="qw">&rarr; '+fmt(wtd)+' wtd</div>'+
+      '<div class="qct">'+d.length+' deals</div></div>';
+  }).join("");
+}
+
+function renderReps(){
+  var reps = ["Matt Valin","Joe Haine","Tim Grisham","Chris Knapp","Chiara Pate"];
+  document.getElementById("rgrid").innerHTML = reps.map(function(rep){
+    var d = filtered.filter(function(x){return x.ownerName===rep});
+    if(!d.length) return "";
+    var raw=d.reduce(function(s,x){return s+x.amount},0);
+    var wtd=d.reduce(function(s,x){return s+x.weighted},0);
+    var h2=d.filter(function(x){return !x.overdue&&(x.closeQ==="Q3 2026"||x.closeQ==="Q4 2026")});
+    var h2w=h2.reduce(function(s,x){return s+x.weighted},0);
+    var hc=d.filter(function(x){return x.prob>=.4}).length;
+    return '<div class="rc"><div class="rn">'+rep+'</div>'+
+      '<div class="rst"><span class="rstl">Total pipeline</span><span class="rstv">'+fmt(raw)+'</span></div>'+
+      '<div class="rst"><span class="rstl">Weighted forecast</span><span class="rstv g">'+fmt(wtd)+'</span></div>'+
+      '<div class="rst"><span class="rstl">H2 2026 weighted</span><span class="rstv a">'+fmt(h2w)+'</span></div>'+
+      '<div class="rst"><span class="rstl">High confidence deals</span><span class="rstv">'+hc+'</span></div>'+
+      '<div class="rst"><span class="rstl">Total deals</span><span class="rstv">'+d.length+'</span></div>'+
+      '</div>';
+  }).join("");
+}
+
+function renderTHead(){
+  var el = document.getElementById("thead");
+  if(!el) return;
+  el.innerHTML = COLS.map(function(c){
+    var active = sortCol===c.key?"sort-active":"";
+    var arrow = sortCol===c.key?(sortDir===-1?"&#9660;":"&#9650;"):"&#8693;";
+    return '<th class="'+active+'" onclick="srt(\''+c.key+'\')">'+c.label+'<span class="sa2">'+arrow+'</span></th>';
+  }).join("");
+}
+
+function renderTable(){
+  var sorted = filtered.slice().sort(function(a,b){
+    var av=a[sortCol]||"", bv=b[sortCol]||"";
+    if(typeof av==="string") return av.localeCompare(bv)*sortDir;
+    return (av-bv)*sortDir;
+  });
+
+  var total = sorted.length;
+  var ps = PAGE_SIZE>=9999?total:PAGE_SIZE;
+  var totalPages = Math.ceil(total/ps)||1;
+  if(currentPage>totalPages) currentPage=1;
+  var start = (currentPage-1)*ps;
+  var page = sorted.slice(start, start+ps);
+
+  var cntEl = document.getElementById("cnt");
+  if(cntEl) cntEl.textContent = total+" deals (showing "+(start+1)+"–"+Math.min(start+ps,total)+")";
+
+  var tbEl = document.getElementById("tb");
+  if(!tbEl) return;
+  tbEl.innerHTML = page.map(function(d){
+    var rc = rowClass(d);
+    var pc = d.pipeline==="679336808"?"ppo":d.pipeline==="679502246"?"ppe":"ppd";
+    var close = d.closedate ? new Date(d.closedate) : null;
+    var cs = close ? close.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—";
+    var days = close ? daysUntil(close) : null;
+    var odf = d.overdue ? '<span class="odf">&#9650; Overdue</span>' :
+              (days!==null&&days<=60 ? '<span class="urgf">('+days+'d)</span>' : "");
+    var url = "https://app.hubspot.com/contacts/39921549/record/0-3/"+d.id;
+    return '<tr class="'+rc+'">'+
+      '<td><a class="dl dn" href="'+url+'" target="_blank" title="'+escHtml(d.dealname)+'">'+escHtml(d.dealname)+'</a></td>'+
+      '<td><span class="pp '+pc+'">'+d.pipeLabel+'</span></td>'+
+      '<td style="white-space:nowrap">'+d.stage+'</td>'+
+      '<td class="monum">'+(d.amount>0?fmt(d.amount):"&mdash;")+'</td>'+
+      '<td><span class="pb '+probClass(d.prob)+'">'+Math.round(d.prob*100)+'%</span></td>'+
+      '<td class="monum" style="color:var(--green)">'+(d.weighted>0?fmt(d.weighted):"&mdash;")+'</td>'+
+      '<td>'+d.ownerName+'</td>'+
+      '<td style="white-space:nowrap">'+cs+odf+'</td>'+
+      '</tr>';
+  }).join("") || '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">No deals match filters</td></tr>';
+
+  renderPagination(currentPage, totalPages, total, start, ps);
+}
+
+function renderPagination(cp,tp,total,start,ps){
+  var bar = document.getElementById("paginationBar");
+  if(!bar) return;
+  if(tp<=1){bar.style.display="none";return;}
+  bar.style.display="flex";
+  var showing = "Showing "+(start+1)+"–"+Math.min(start+ps,total)+" of "+total+" deals";
+  var range = [];
+  for(var i=1;i<=tp;i++){
+    if(i===1||i===tp||Math.abs(i-cp)<=2) range.push(i);
+    else if(range[range.length-1]!=="...") range.push("...");
+  }
+  var btns = range.map(function(p){
+    if(p==="...") return '<span style="color:var(--text3);padding:0 4px">&#8230;</span>';
+    return '<button class="pg-btn'+(p===cp?" active":"")+'" onclick="goPage('+p+')">'+p+'</button>';
+  }).join("");
+  bar.innerHTML =
+    '<div class="pg-info">'+showing+'</div>'+
+    '<div class="pg-controls">'+
+      '<button class="pg-btn" onclick="goPage('+Math.max(1,cp-1)+')" '+(cp===1?"disabled":"")+'>&lsaquo; Prev</button>'+
+      btns+
+      '<button class="pg-btn" onclick="goPage('+Math.min(tp,cp+1)+')" '+(cp===tp?"disabled":"")+'>&rsaquo; Next</button>'+
+    '</div>';
+}
+
+function goPage(p){currentPage=p;renderTable();}
+
+function doExport(){
+  var sorted = filtered.slice().sort(function(a,b){
+    var av=a[sortCol]||"",bv=b[sortCol]||"";
+    if(typeof av==="string") return av.localeCompare(bv)*sortDir;
+    return (av-bv)*sortDir;
+  });
+  var rows = [["Deal Name","Pipeline","Stage","Amount","Probability","Weighted","Owner","Close Date","Overdue"]];
+  sorted.forEach(function(d){
+    rows.push(['"'+d.dealname.replace(/,/g," ")+'"',d.pipeLabel,d.stage,d.amount,Math.round(d.prob*100)+"%",d.weighted,d.ownerName,d.closedate,d.overdue?"Yes":"No"]);
+  });
+  var a = document.createElement("a");
+  a.href = "data:text/csv;charset=utf-8,"+encodeURIComponent(rows.map(function(r){return r.join(",")}).join("\n"));
+  a.download = "CarePathIQ_Pipeline_"+new Date().toISOString().slice(0,10)+".csv";
+  a.click();
+}
+
+function toggleTheme(){
+  var b = document.body;
+  var btn = document.getElementById("themeBtn");
+  if(b.classList.contains("light")){
+    b.classList.remove("light");
+    btn.textContent = "☀ Light";
+    try{localStorage.setItem("cpiq-theme","dark")}catch(e){}
+  } else {
+    b.classList.add("light");
+    btn.textContent = "☾ Dark";
+    try{localStorage.setItem("cpiq-theme","light")}catch(e){}
+  }
+}
+
+// Restore theme
+try{
+  if(localStorage.getItem("cpiq-theme")==="light"){
+    document.body.classList.add("light");
+    document.addEventListener("DOMContentLoaded",function(){
+      var btn=document.getElementById("themeBtn");
+      if(btn) btn.textContent="☾ Dark";
+    });
+  }
+}catch(e){}
+
+// Kick off
+loadData();
+</script>
+</body>
+</html>
