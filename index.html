@@ -304,12 +304,20 @@ function probClass(p){
 
 // ── Finance helpers ──────────────────────────────────────────────────────────
 function loadFinStorage() {
+  // Seed finance data from HubSpot values first
+  DEALS.forEach(function(d) {
+    finData[d.id] = { impl: d.impl||0, recur: d.recur||0, svc: d.svc||0 };
+  });
+  // Then apply any localStorage overrides on top
   try {
     var g = localStorage.getItem('cpiq-fin-goals');
     if(g) finGoals = JSON.parse(g);
     DEALS.forEach(function(d) {
       var s = localStorage.getItem('cpiq-fin-'+d.id);
-      if(s) finData[d.id] = JSON.parse(s);
+      if(s) {
+        var override = JSON.parse(s);
+        finData[d.id] = override;
+      }
     });
   } catch(e) {}
   // Restore goals inputs
