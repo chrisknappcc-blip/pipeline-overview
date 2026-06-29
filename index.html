@@ -150,6 +150,15 @@ tr.row-warm:hover td{background:rgba(245,166,35,.12) !important}
 .pg-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .pg-per{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)}
 
+/* Table scroll */
+.table-scroll{overflow-x:scroll;position:relative}
+.table-scroll::-webkit-scrollbar{height:6px}
+.table-scroll::-webkit-scrollbar-track{background:var(--border)}
+.table-scroll::-webkit-scrollbar-thumb{background:var(--borderl);border-radius:3px}
+.table-scroll::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+.scroll-hint{display:none;font-size:10px;color:var(--text3);padding:4px 14px 6px;text-align:right;border-top:1px solid var(--border)}
+.scroll-hint.visible{display:block}
+
 /* Finance mode */
 .fin-panel{background:var(--panel);border:1px solid var(--borderl);border-radius:var(--rl);padding:12px 16px;margin-bottom:16px;display:none}
 .fin-panel.visible{display:block}
@@ -426,6 +435,8 @@ function toggleFinanceMode() {
   if(btn) { btn.textContent = financeMode ? '✕ Exit Finance View' : '$ Finance View'; btn.classList.toggle('active', financeMode); }
   var panel = document.getElementById('finPanel');
   if(panel) panel.classList.toggle('visible', financeMode);
+  var hint = document.getElementById('scrollHint');
+  if(hint) hint.classList.toggle('visible', financeMode);
   renderFinanceSummary();
   renderTHead();
   renderTable();
@@ -507,9 +518,10 @@ function buildUI() {
     '      </select>',
     '    </div>',
     '  </div>',
-    '  <div style="overflow-x:auto">',
+    '  <div class="table-scroll">',
     '  <table><thead><tr id="thead"></tr></thead><tbody id="tb"></tbody></table>',
     '  </div>',
+    '  <div class="scroll-hint" id="scrollHint">&#8592; scroll sideways to see all columns &#8594;</div>',
     '</div>',
     '<div class="pagination" id="paginationBar"></div>',
   ].join("");
@@ -688,11 +700,15 @@ function renderReps(){
 function renderTHead(){
   var el = document.getElementById("thead");
   if(!el) return;
-  el.innerHTML = COLS.map(function(c){
-    var active = sortCol===c.key?"sort-active":"";
-    var arrow = sortCol===c.key?(sortDir===-1?"&#9660;":"&#9650;"):"&#8693;";
-    return '<th class="'+active+'" onclick="srt(\''+c.key+'\')">'+c.label+'<span class="sa2">'+arrow+'</span></th>';
+  var base = COLS.map(function(col){
+    var active = sortCol===col.key?"sort-active":"";
+    var arrow = sortCol===col.key?(sortDir===-1?"&#9660;":"&#9650;"):"&#8693;";
+    return "<th class=\""+active+"\" onclick=\"srt('"+col.key+"')\">"+col.label+"<span class=\"sa2\">"+arrow+"</span></th>";
   }).join("");
+  var fin = financeMode ? FIN_COLS.map(function(col){
+    return "<th class=\"fin-th\">"+col.label+"</th>";
+  }).join("") : "";
+  el.innerHTML = base + fin;
 }
 
 function renderTable(){
