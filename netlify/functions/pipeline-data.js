@@ -23,6 +23,8 @@ async function fetchPage(filterGroups, after = undefined) {
     properties: [
       'dealname', 'pipeline', 'dealstage', 'amount',
       'amount_in_home_currency', 'closedate', 'hubspot_owner_id',
+      'implementation_fee__c', 'annual_recurring_fee__c',
+      'acv__c', 'service_percent',
     ],
     limit: 200,
     sorts: [{ propertyName: 'amount_in_home_currency', direction: 'DESCENDING' }],
@@ -95,6 +97,10 @@ exports.handler = async () => {
       amount: parseFloat(d.properties.amount_in_home_currency || 0),
       closedate: (d.properties.closedate || '').slice(0, 10),
       owner: d.properties.hubspot_owner_id || '',
+      impl:   parseFloat(d.properties.implementation_fee__c  || 0),
+      recur:  parseFloat(d.properties.annual_recurring_fee__c || 0),
+      acv:    parseFloat(d.properties.acv__c                 || 0),
+      svc:    parseFloat(d.properties.service_percent        || 0),
     }));
 
     return {
