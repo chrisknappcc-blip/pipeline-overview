@@ -302,7 +302,7 @@ function quarterSortKey(qStr){
 }
 function populateQuarterDropdowns(){
   var quarters = {};
-  DEALS.forEach(function(d){ if(!d.overdue && d.closeQ && d.closeQ!=="Unknown") quarters[d.closeQ]=true; });
+  DEALS.forEach(function(d){ if(d.closeQ && d.closeQ!=="Unknown") quarters[d.closeQ]=true; });
   var sortedQ = Object.keys(quarters).sort(function(a,b){ return quarterSortKey(a)-quarterSortKey(b); });
   ["cf","tcf"].forEach(function(id){
     var el = document.getElementById(id);
