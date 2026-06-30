@@ -101,6 +101,8 @@ select,input{background:var(--sec);border:1px solid var(--borderl);color:var(--t
 /* Table */
 .tw{background:var(--panel);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:12px}
 .tc2{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--sec);flex-wrap:wrap}
+.tc2-sub{background:var(--panel);padding:8px 14px}
+.tc2-sub select,.tc2-sub input{font-size:10px;padding:4px 8px}
 table{width:100%;border-collapse:collapse}
 th{padding:7px 12px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border);text-align:left;background:var(--sec);white-space:nowrap;cursor:pointer;user-select:none}
 th:hover{color:var(--text)}
@@ -151,11 +153,14 @@ tr.row-warm:hover td{background:rgba(245,166,35,.12) !important}
 .pg-per{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)}
 
 /* Table scroll */
-.table-scroll{overflow-x:scroll;position:relative}
-.table-scroll::-webkit-scrollbar{height:6px}
-.table-scroll::-webkit-scrollbar-track{background:var(--border)}
-.table-scroll::-webkit-scrollbar-thumb{background:var(--borderl);border-radius:3px}
-.table-scroll::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+.table-scroll{overflow-x:scroll;position:relative;scrollbar-color:rgba(255,255,255,.55) var(--sec)}
+.table-scroll::-webkit-scrollbar{height:10px}
+.table-scroll::-webkit-scrollbar-track{background:var(--sec);border-radius:5px}
+.table-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.45);border-radius:5px;border:2px solid var(--sec)}
+.table-scroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.7)}
+body.light .table-scroll{scrollbar-color:rgba(0,0,0,.35) var(--sec)}
+body.light .table-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.3);border-color:var(--sec)}
+body.light .table-scroll::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.5)}
 .scroll-hint{display:none;font-size:10px;color:var(--text3);padding:4px 14px 6px;text-align:right;border-top:1px solid var(--border)}
 .scroll-hint.visible{display:block}
 
@@ -215,10 +220,6 @@ tr:hover td.fin-td{background:rgba(232,168,56,.12) !important}
       <select id="cf" onchange="go()">
         <option value="all">All Close Dates</option>
         <option value="overdue">Overdue</option>
-        <option value="Q3 2026">Q3 2026</option>
-        <option value="Q4 2026">Q4 2026</option>
-        <option value="Q1 2027">Q1 2027</option>
-        <option value="future">Q2 2027+</option>
       </select>
       <input id="sb" type="text" placeholder="Search deals..." oninput="go()" style="width:150px">
       <button class="btn refresh-btn" onclick="loadData()"><span id="refreshIcon">&#8635;</span> Refresh</button>
@@ -293,6 +294,32 @@ var finData = {};  // keyed by deal id: {impl, recur, svc}
 var finGoals = {acv: 0, carr26: 0, carr25: 0};
 
 function q(d){var m=d.getMonth(),y=d.getFullYear();return "Q"+(Math.floor(m/3)+1)+" "+y}
+function quarterSortKey(qStr){
+  var parts = qStr.split(" ");
+  var qn = parseInt(parts[0].replace("Q",""))||0;
+  var yr = parseInt(parts[1])||0;
+  return yr*10+qn;
+}
+function populateQuarterDropdowns(){
+  var quarters = {};
+  DEALS.forEach(function(d){ if(!d.overdue && d.closeQ && d.closeQ!=="Unknown") quarters[d.closeQ]=true; });
+  var sortedQ = Object.keys(quarters).sort(function(a,b){ return quarterSortKey(a)-quarterSortKey(b); });
+  ["cf","tcf"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var current = el.value;
+    // Remove any existing quarter options (keep "all" and "overdue")
+    Array.from(el.options).forEach(function(opt){
+      if(opt.value!=="all" && opt.value!=="overdue") el.removeChild(opt);
+    });
+    sortedQ.forEach(function(qStr){
+      var opt = document.createElement("option");
+      opt.value = qStr; opt.textContent = qStr;
+      el.appendChild(opt);
+    });
+    if(Array.from(el.options).some(function(o){return o.value===current;})) el.value = current;
+  });
+}
 function fmt(n){if(n>=1000000)return "$"+(n/1000000).toFixed(1)+"M";if(n>=1000)return "$"+Math.round(n/1000)+"K";return n>0?"$"+n:"—"}
 function daysUntil(d){return Math.round((d-TODAY)/(864e5))}
 function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
@@ -479,6 +506,7 @@ async function loadData() {
     document.getElementById("app").innerHTML = buildUI();
     attachEvents();
     loadFinStorage();
+    populateQuarterDropdowns();
     go();
 
   } catch(err) {
@@ -518,6 +546,14 @@ function buildUI() {
     '      </select>',
     '    </div>',
     '  </div>',
+    '  <div class="tc2 tc2-sub">',
+    '    <span style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Table filters:</span>',
+    '    <select id="tpf" onchange="renderTable()"><option value="all">All Pipelines</option><option value="opp">Opportunity</option><option value="deal">Deal</option><option value="exp">Expansion</option></select>',
+    '    <select id="trf" onchange="renderTable()"><option value="all">All Reps</option><option value="Matt Valin">Matt Valin</option><option value="Joe Haine">Joe Haine</option><option value="Tim Grisham">Tim Grisham</option><option value="Chris Knapp">Chris Knapp</option><option value="Chiara Pate">Chiara Pate</option></select>',
+    '    <select id="tcf" onchange="renderTable()"><option value="all">All Close Dates</option><option value="overdue">Overdue</option></select>',
+    '    <input id="tsb" type="text" placeholder="Search this table..." oninput="renderTable()" style="width:160px">',
+    '    <button class="btn" style="padding:4px 10px;font-size:10px" onclick="resetTableFilters()">Reset</button>',
+    '  </div>',
     '  <div class="table-scroll">',
     '  <table><thead><tr id="thead"></tr></thead><tbody id="tb"></tbody></table>',
     '  </div>',
@@ -548,11 +584,17 @@ var FIN_COLS = [
 ];
 
 function attachEvents() {
-  // Re-wire filter controls after DOM rebuild
+  // Re-wire global filter controls after DOM rebuild
   ["pf","rf","cf","sb","perPage"].forEach(function(id){
     var el = document.getElementById(id);
     if(!el) return;
     el.addEventListener(el.tagName==="INPUT"?"input":"change", go);
+  });
+  // Re-wire table-specific filter controls
+  ["tpf","trf","tcf","tsb"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener(el.tagName==="INPUT"?"input":"change", function(){ currentPage=1; renderTable(); });
   });
 }
 
@@ -569,16 +611,38 @@ function go() {
     if(pf==="exp"&&d.pipeline!=="679502246") return false;
     if(rf!=="all"&&d.ownerName!==rf) return false;
     if(cf==="overdue"&&!d.overdue) return false;
-    if(cf==="Q3 2026"&&d.closeQ!=="Q3 2026") return false;
-    if(cf==="Q4 2026"&&d.closeQ!=="Q4 2026") return false;
-    if(cf==="Q1 2027"&&d.closeQ!=="Q1 2027") return false;
-    if(cf==="future"&&!d.overdue&&["Q3 2026","Q4 2026","Q1 2027"].indexOf(d.closeQ)>-1) return false;
+    if(cf!=="all"&&cf!=="overdue"&&d.closeQ!==cf) return false;
     if(sb&&d.dealname.toLowerCase().indexOf(sb)===-1) return false;
     return true;
   });
 
   currentPage = 1;
   render();
+}
+
+function getTableFiltered(){
+  var tpf = (document.getElementById("tpf")||{}).value||"all";
+  var trf = (document.getElementById("trf")||{}).value||"all";
+  var tcf = (document.getElementById("tcf")||{}).value||"all";
+  var tsb = ((document.getElementById("tsb")||{}).value||"").toLowerCase();
+
+  return DEALS.filter(function(d){
+    if(tpf==="opp"&&d.pipeline!=="679336808") return false;
+    if(tpf==="deal"&&d.pipeline!=="678610513") return false;
+    if(tpf==="exp"&&d.pipeline!=="679502246") return false;
+    if(trf!=="all"&&d.ownerName!==trf) return false;
+    if(tcf==="overdue"&&!d.overdue) return false;
+    if(tcf!=="all"&&tcf!=="overdue"&&d.closeQ!==tcf) return false;
+    if(tsb&&d.dealname.toLowerCase().indexOf(tsb)===-1) return false;
+    return true;
+  });
+}
+
+function resetTableFilters(){
+  ["tpf","trf","tcf"].forEach(function(id){ var el=document.getElementById(id); if(el) el.value="all"; });
+  var sb = document.getElementById("tsb"); if(sb) sb.value="";
+  currentPage = 1;
+  renderTable();
 }
 
 function srt(col){
@@ -712,7 +776,8 @@ function renderTHead(){
 }
 
 function renderTable(){
-  var sorted = filtered.slice().sort(function(a,b){
+  var tableFiltered = getTableFiltered();
+  var sorted = tableFiltered.slice().sort(function(a,b){
     var av=a[sortCol]||"", bv=b[sortCol]||"";
     if(typeof av==="string") return av.localeCompare(bv)*sortDir;
     return (av-bv)*sortDir;
@@ -796,7 +861,7 @@ function renderPagination(cp,tp,total,start,ps){
 function goPage(p){currentPage=p;renderTable();}
 
 function doExport(){
-  var sorted = filtered.slice().sort(function(a,b){
+  var sorted = getTableFiltered().slice().sort(function(a,b){
     var av=a[sortCol]||"",bv=b[sortCol]||"";
     if(typeof av==="string") return av.localeCompare(bv)*sortDir;
     return (av-bv)*sortDir;
