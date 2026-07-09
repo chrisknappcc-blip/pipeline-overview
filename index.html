@@ -286,6 +286,8 @@ var TODAY = new Date();
 TODAY.setHours(0,0,0,0);
 
 var DEALS = [];
+var WON_DEALS = [];
+var wonFiltered = [];
 var filtered = [];
 var sortCol = "amount", sortDir = -1, currentPage = 1, PAGE_SIZE = 25;
 var fetchedAt = null;
@@ -497,16 +499,30 @@ async function loadData() {
       });
     });
 
+    // Parse won deals
+    WON_DEALS = (data.wonDeals || []).map(function(d) {
+      var close = d.closedate ? new Date(d.closedate) : null;
+      var pipeLabel = d.pipeline==="679336808"?"Opportunity":d.pipeline==="679502246"?"Expansion":"Deal";
+      return Object.assign({}, d, {
+        closeQ: close ? q(close) : "Unknown",
+        closeYear: close ? close.getFullYear() : null,
+        ownerName: OWNERS[d.owner] || d.owner || "Unassigned",
+        pipeLabel: pipeLabel,
+      });
+    });
+    wonFiltered = WON_DEALS.slice();
+
     // Update subtitle with fetch time
     var ts = fetchedAt ? new Date(fetchedAt).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "";
     document.getElementById("subtitle").innerHTML =
-      "Opportunity + Deal + Expansion &nbsp;&middot;&nbsp; " + DEALS.length + " active deals &nbsp;&middot;&nbsp; Live from HubSpot" +
+      "Opportunity + Deal + Expansion &nbsp;&middot;&nbsp; " + DEALS.length + " active deals &nbsp;&middot;&nbsp; " + WON_DEALS.length + " closed won &nbsp;&middot;&nbsp; Live from HubSpot" +
       (ts ? " &nbsp;&middot;&nbsp; Updated " + ts : "");
 
     document.getElementById("app").innerHTML = buildUI();
     attachEvents();
     loadFinStorage();
     populateQuarterDropdowns();
+    populateWonFilters();
     go();
 
   } catch(err) {
@@ -560,6 +576,23 @@ function buildUI() {
     '  <div class="scroll-hint" id="scrollHint">&#8592; scroll sideways to see all columns &#8594;</div>',
     '</div>',
     '<div class="pagination" id="paginationBar"></div>',
+    // Closed Won section
+    '<div class="card" style="margin-top:20px">',
+    '  <div class="tc2" style="background:var(--g20,#052e16)">',
+    '    <div class="sth" style="margin:0;color:#4ade80">&#10003; Closed Won</div>',
+    '    <span id="wonCnt" style="font-size:10px;color:#86efac"></span>',
+    '    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">',
+    '      <span style="font-size:10px;color:#86efac">Year:</span>',
+    '      <select id="wonYear" onchange="renderWon()" style="padding:3px 6px;font-size:10px;background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:4px"><option value="all">All Years</option></select>',
+    '      <select id="wonPipe" onchange="renderWon()" style="padding:3px 6px;font-size:10px;background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:4px"><option value="all">All Pipelines</option><option value="opp">Opportunity</option><option value="deal">Deal</option><option value="exp">Expansion</option></select>',
+    '      <select id="wonOwner" onchange="renderWon()" style="padding:3px 6px;font-size:10px;background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:4px"><option value="all">All Reps</option><option value="Matt Valin">Matt Valin</option><option value="Joe Haine">Joe Haine</option><option value="Tim Grisham">Tim Grisham</option><option value="Chris Knapp">Chris Knapp</option><option value="Chiara Pate">Chiara Pate</option></select>',
+    '    </div>',
+    '  </div>',
+    '  <div id="wonKpis" style="display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap"></div>',
+    '  <div class="table-scroll">',
+    '    <table><thead><tr id="wonHead"></tr></thead><tbody id="wonBody"></tbody></table>',
+    '  </div>',
+    '</div>',
   ].join("");
 }
 
@@ -652,7 +685,82 @@ function srt(col){
   renderTHead();
 }
 
-function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();renderFinanceSummary();}
+function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();renderFinanceSummary();renderWon();}
+
+function populateWonFilters() {
+  var years = {};
+  WON_DEALS.forEach(function(d){ if(d.closeYear) years[d.closeYear] = true; });
+  var sortedY = Object.keys(years).sort(function(a,b){return b-a;});
+  var el = document.getElementById('wonYear');
+  if (!el) return;
+  Array.from(el.options).forEach(function(o){ if(o.value !== 'all') el.removeChild(o); });
+  sortedY.forEach(function(y){
+    var o = document.createElement('option'); o.value = y; o.textContent = y; el.appendChild(o);
+  });
+}
+
+function renderWon() {
+  if (!document.getElementById('wonBody')) return;
+  var yf = (document.getElementById('wonYear') || {}).value || 'all';
+  var pf = (document.getElementById('wonPipe') || {}).value || 'all';
+  var of = (document.getElementById('wonOwner') || {}).value || 'all';
+
+  wonFiltered = WON_DEALS.filter(function(d){
+    if (yf !== 'all' && String(d.closeYear) !== yf) return false;
+    if (pf === 'opp' && d.pipeline !== '679336808') return false;
+    if (pf === 'deal' && d.pipeline !== '678610513') return false;
+    if (pf === 'exp' && d.pipeline !== '679502246') return false;
+    if (of !== 'all' && d.ownerName !== of) return false;
+    return true;
+  });
+
+  var totalAmt = wonFiltered.reduce(function(s,d){return s+d.amount;},0);
+  var totalAcv = wonFiltered.reduce(function(s,d){return s+(d.acv||d.amount||0);},0);
+  var curYear = new Date().getFullYear();
+  var thisYr = wonFiltered.filter(function(d){return d.closeYear === curYear;});
+  var thisYrAmt = thisYr.reduce(function(s,d){return s+d.amount;},0);
+
+  var kpiEl = document.getElementById('wonKpis');
+  if (kpiEl) kpiEl.innerHTML = [
+    {l:'Deals Closed Won', v: wonFiltered.length},
+    {l:'Total Value', v: '$' + (totalAmt/1e6).toFixed(2) + 'M'},
+    {l:'Total ACV', v: '$' + (totalAcv/1e6).toFixed(2) + 'M'},
+    {l:curYear + ' Wins', v: thisYr.length},
+    {l:curYear + ' Value', v: '$' + (thisYrAmt>=1e6?(thisYrAmt/1e6).toFixed(2)+'M':(thisYrAmt/1e3).toFixed(0)+'K')},
+  ].map(function(k){
+    return '<div style="background:var(--sec);border:1px solid #16a34a;border-radius:6px;padding:8px 14px;min-width:120px">'
+      +'<div style="font-size:9px;font-weight:600;color:#86efac;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">'+k.l+'</div>'
+      +'<div style="font-size:20px;font-weight:700;color:#4ade80">'+k.v+'</div>'
+      +'</div>';
+  }).join('');
+
+  var cntEl = document.getElementById('wonCnt');
+  if (cntEl) cntEl.textContent = wonFiltered.length + ' deals';
+
+  var head = document.getElementById('wonHead');
+  if (head) head.innerHTML = ['Deal','Pipeline','Rep','Close Date','Amount','ACV'].map(function(h){
+    return '<th style="background:#052e16;color:#86efac;padding:7px 10px;font-size:10px;font-weight:600;text-align:'+(h==='Amount'||h==='ACV'?'right':'left')+';white-space:nowrap">'+h+'</th>';
+  }).join('');
+
+  var body = document.getElementById('wonBody');
+  if (body) body.innerHTML = wonFiltered.sort(function(a,b){
+    return (b.closedate||'').localeCompare(a.closedate||'');
+  }).map(function(d, i){
+    var bg = i%2===0 ? 'rgba(21,128,61,.06)' : 'rgba(21,128,61,.02)';
+    var amt = d.amount >= 1e6 ? '$'+(d.amount/1e6).toFixed(2)+'M' : '$'+(d.amount/1e3).toFixed(0)+'K';
+    var acv = (d.acv||0) >= 1e6 ? '$'+((d.acv||0)/1e6).toFixed(2)+'M' : '$'+((d.acv||0)/1e3).toFixed(0)+'K';
+    return '<tr style="background:'+bg+';border-bottom:1px solid rgba(22,163,74,.12)">'
+      +'<td style="padding:7px 10px;font-size:11px;font-weight:500;color:var(--text)">'+esc(d.dealname)+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:var(--text2)">'+esc(d.pipeLabel)+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:var(--text2)">'+esc(d.ownerName)+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:var(--text2)">'+esc(d.closedate||'')+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:#4ade80;text-align:right;font-weight:600">'+amt+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:#86efac;text-align:right">'+(d.acv?acv:'—')+'</td>'
+      +'</tr>';
+  }).join('') || '<tr><td colspan="6" style="padding:24px;text-align:center;color:#86efac;font-size:11px">No closed won deals match this filter</td></tr>';
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function renderKPIs(){
   var d = filtered;
