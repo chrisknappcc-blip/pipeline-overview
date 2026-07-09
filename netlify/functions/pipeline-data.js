@@ -1,5 +1,7 @@
 const TOKEN = process.env.HUBSPOT_PRIVATE_TOKEN;
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 const PIPELINES = {
   '679336808': 'Opportunity',
   '678610513': 'Deal',
@@ -29,7 +31,7 @@ const DEAL_PROPERTIES = [
   'acv__c', 'service_percent',
 ];
 
-async function fetchPage(filterGroups, after = undefined) {
+async function fetchPage(filterGroups, after = undefined, attempt = 0) {
   const body = {
     filterGroups,
     properties: DEAL_PROPERTIES,
@@ -46,6 +48,12 @@ async function fetchPage(filterGroups, after = undefined) {
     },
     body: JSON.stringify(body),
   });
+
+  // Retry on 429 with exponential backoff (max 3 attempts)
+  if (res.status === 429 && attempt < 3) {
+    await sleep(1000 * Math.pow(2, attempt)); // 1s, 2s, 4s
+    return fetchPage(filterGroups, after, attempt + 1);
+  }
 
   if (!res.ok) {
     const err = await res.text();
@@ -118,12 +126,14 @@ exports.handler = async () => {
   }
 
   try {
-    const [oppDeals, dealDeals, expDeals, wonRaw] = await Promise.all([
-      fetchPipelineDeals('679336808'),
-      fetchPipelineDeals('678610513'),
-      fetchPipelineDeals('679502246'),
-      fetchClosedWonDeals(),
-    ]);
+    // Sequential with 350ms gaps to stay under HubSpot's search rate limit
+    const oppDeals = await fetchPipelineDeals('679336808');
+    await sleep(350);
+    const dealDeals = await fetchPipelineDeals('678610513');
+    await sleep(350);
+    const expDeals = await fetchPipelineDeals('679502246');
+    await sleep(350);
+    const wonRaw = await fetchClosedWonDeals();
 
     const allDeals = [...oppDeals, ...dealDeals, ...expDeals].map(d => mapDeal(d, false));
     const wonDeals = wonRaw.map(d => mapDeal(d, true));
