@@ -110,7 +110,7 @@ select,input{background:var(--sec);border:1px solid var(--borderl);color:var(--t
 .section-body.hidden{display:none!important}
 .col-settings-btn{padding:4px 10px;font-size:10px;background:transparent;border:1px solid var(--borderl);color:var(--text3);border-radius:4px;cursor:pointer}
 .col-settings-btn:hover{background:var(--hover);color:var(--text)}
-.col-settings-panel{display:none;background:var(--panel);border:1px solid var(--borderl);border-radius:var(--r);padding:12px 14px;margin:8px 0;flex-wrap:wrap;gap:10px}
+.col-settings-panel{background:var(--panel);border:1px solid var(--borderl);border-radius:var(--r);padding:12px 14px;margin:8px 0;flex-wrap:wrap;gap:10px}
 .col-settings-panel.open{display:flex}
 .col-setting-item{display:flex;flex-direction:column;gap:4px;min-width:110px;background:var(--sec);border:1px solid var(--border);border-radius:4px;padding:7px 10px}
 .col-setting-label{font-size:10px;font-weight:600;color:var(--text2);margin-bottom:2px}
@@ -593,6 +593,9 @@ async function loadData() {
     go();
     initSection('activeDeals');
     initSection('closedWon');
+    initSection('byPipeline');
+    initSection('byQuarter');
+    initSection('byRep');
 
   } catch(err) {
     document.getElementById("app").innerHTML =
@@ -614,16 +617,25 @@ function buildUI() {
     '<span class="leg-item"><div class="leg-swatch" style="background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.3)"></div>Closing &lt;90 days</span>',
     '</div>',
     '<div class="kpis" id="kpis"></div>',
-    '<div class="sth">By Pipeline</div>',
-    '<div class="pg" id="pgrid"></div>',
-    '<div class="sth">Forecast by Close Quarter</div>',
-    '<div class="qg" id="qgrid"></div>',
-    '<div class="sth">By Rep</div>',
-    '<div class="rg" id="rgrid"></div>',
+    '<div style="display:flex;align-items:center;gap:6px;padding:0 0 4px 0">',
+    '  <button class="collapse-btn" id="cbtn-byPipeline" data-sec="byPipeline" onclick="toggleSection(this.dataset.sec)">&#9660;</button>',
+    '  <div class="sth" style="margin:0;cursor:pointer" data-sec="byPipeline" onclick="toggleSection(this.dataset.sec)">By Pipeline</div>',
+    '</div>',
+    '<div id="sec-byPipeline" class="section-body"><div class="pg" id="pgrid"></div></div>',
+    '<div style="display:flex;align-items:center;gap:6px;padding:8px 0 4px 0">',
+    '  <button class="collapse-btn" id="cbtn-byQuarter" data-sec="byQuarter" onclick="toggleSection(this.dataset.sec)">&#9660;</button>',
+    '  <div class="sth" style="margin:0;cursor:pointer" data-sec="byQuarter" onclick="toggleSection(this.dataset.sec)">Forecast by Close Quarter</div>',
+    '</div>',
+    '<div id="sec-byQuarter" class="section-body"><div class="qg" id="qgrid"></div></div>',
+    '<div style="display:flex;align-items:center;gap:6px;padding:8px 0 4px 0">',
+    '  <button class="collapse-btn" id="cbtn-byRep" data-sec="byRep" onclick="toggleSection(this.dataset.sec)">&#9660;</button>',
+    '  <div class="sth" style="margin:0;cursor:pointer" data-sec="byRep" onclick="toggleSection(this.dataset.sec)">By Rep</div>',
+    '</div>',
+    '<div id="sec-byRep" class="section-body"><div class="rg" id="rgrid"></div></div>',
     '<div class="tw">',
     '<div id="sec-activeDeals" class="section-body">',
     '  <div class="tc2">',
-    '    <button class="collapse-btn" id="cbtn-activeDeals" onclick="toggleSection(\"activeDeals\")" title="Collapse">&#9660;</button>',
+    '    <button class="collapse-btn" id="cbtn-activeDeals" data-sec="activeDeals" onclick="toggleSection(this.dataset.sec)" title="Collapse">&#9660;</button>',
     '    <div class="sth" style="margin:0">All Active Deals</div>',
     '    <span id="cnt" style="font-size:10px;color:var(--text3)"></span>',
     '    <button class="col-settings-btn" onclick="toggleColPanel()">&#9881; Columns</button>',
@@ -634,6 +646,7 @@ function buildUI() {
     '      </select>',
     '    </div>',
     '  </div>',
+    '  <div id="col-settings-panel" class="col-settings-panel" style="display:none;flex-wrap:wrap;gap:10px;padding:12px 14px;background:var(--sec);border-bottom:1px solid var(--border)"></div>',
     '  <div class="tc2 tc2-sub">',
     '    <span style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Table filters:</span>',
     '    <select id="tpf" onchange="renderTable()"><option value="all">All Pipelines</option><option value="opp">Opportunity</option><option value="deal">Deal</option><option value="exp">Expansion</option></select>',
@@ -647,13 +660,12 @@ function buildUI() {
     '  </div>',
     '  <div class="scroll-hint" id="scrollHint">&#8592; scroll sideways to see all columns &#8594;</div>',
     '</div>',
-    '<div id="col-settings-panel" class="col-settings-panel"></div>',
     '<div class="pagination" id="paginationBar"></div>',
     '</div>',
     // Closed Won section
     '<div class="card" style="margin-top:20px">',
     '  <div class="tc2" style="background:var(--g20,#052e16)">',
-    '    <button class="collapse-btn" id="cbtn-closedWon" onclick="toggleSection(\"closedWon\")" title="Collapse" style="color:#86efac">&#9660;</button>',
+    '    <button class="collapse-btn" id="cbtn-closedWon" data-sec="closedWon" onclick="toggleSection(this.dataset.sec)" title="Collapse" style="color:#86efac">&#9660;</button>',
     '    <div class="sth" style="margin:0;color:#4ade80">&#10003; Closed Won</div>',
     '    <span id="wonCnt" style="font-size:10px;color:#86efac"></span>',
     '    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">',
@@ -765,19 +777,24 @@ function srt(col){
 
 function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();renderFinanceSummary();renderWon();initColPanel();}
 
+function handleColChange(el) {
+  setColConfig(el.dataset.key, el.dataset.prop, el.checked);
+}
+
 function initColPanel() {
-  var panel = document.getElementById("col-settings-panel");
+  var panel = document.getElementById('col-settings-panel');
   if (!panel) return;
   var allCols = COLS.concat(FIN_COLS);
-  panel.innerHTML = allCols.map(function(col) {
+  panel.innerHTML = '<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;width:100%;margin-bottom:4px">Column Visibility &amp; Export</div>'
+    + allCols.map(function(col) {
     var sv = isVisible(col.key);
     var ev = isExported(col.key);
-    return '<div class="col-setting-item">'
+    return '<div class="col-setting-item" style="min-width:130px">'
       + '<div class="col-setting-label">' + col.label + '</div>'
-      + '<label class="col-setting-check"><input type="checkbox" '+(sv?'checked':'')
-      +  ' onchange="setColConfig(\"'+col.key+'\",\"show\",this.checked)"> Show</label>'
-      + '<label class="col-setting-check"><input type="checkbox" '+(ev?'checked':'')
-      +  ' onchange="setColConfig(\"'+col.key+'\",\"exp\",this.checked)"> Export</label>'
+      + '<label class="col-setting-check"><input type="checkbox"'+(sv?' checked':'')
+      +  ' data-key="'+col.key+'" data-prop="show" onchange="handleColChange(this)"> Show in table</label>'
+      + '<label class="col-setting-check"><input type="checkbox"'+(ev?' checked':'')
+      +  ' data-key="'+col.key+'" data-prop="exp" onchange="handleColChange(this)"> Include in export</label>'
       + '</div>';
   }).join('');
 }
@@ -791,8 +808,10 @@ function setColConfig(key, prop, val) {
 }
 
 function toggleColPanel() {
-  var panel = document.getElementById("col-settings-panel");
-  if (panel) panel.classList.toggle("open");
+  var panel = document.getElementById('col-settings-panel');
+  if (!panel) return;
+  var isOpen = panel.style.display === 'flex';
+  panel.style.display = isOpen ? 'none' : 'flex';
 }
 
 function populateWonFilters() {
