@@ -103,6 +103,19 @@ select,input{background:var(--sec);border:1px solid var(--borderl);color:var(--t
 .tc2{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--sec);flex-wrap:wrap}
 .tc2-sub{background:var(--panel);padding:8px 14px}
 .tc2-sub select,.tc2-sub input{font-size:10px;padding:4px 8px}
+.collapse-btn{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:3px;transition:transform .2s;line-height:1}
+.collapse-btn:hover{color:var(--text);background:var(--hover)}
+.collapse-btn.collapsed{transform:rotate(-90deg)}
+.section-body{transition:none}
+.section-body.hidden{display:none!important}
+.col-settings-btn{padding:4px 10px;font-size:10px;background:transparent;border:1px solid var(--borderl);color:var(--text3);border-radius:4px;cursor:pointer}
+.col-settings-btn:hover{background:var(--hover);color:var(--text)}
+.col-settings-panel{display:none;background:var(--panel);border:1px solid var(--borderl);border-radius:var(--r);padding:12px 14px;margin:8px 0;flex-wrap:wrap;gap:10px}
+.col-settings-panel.open{display:flex}
+.col-setting-item{display:flex;flex-direction:column;gap:4px;min-width:110px;background:var(--sec);border:1px solid var(--border);border-radius:4px;padding:7px 10px}
+.col-setting-label{font-size:10px;font-weight:600;color:var(--text2);margin-bottom:2px}
+.col-setting-check{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3);cursor:pointer}
+.col-setting-check input{cursor:pointer;accent-color:var(--accent)}
 table{width:100%;border-collapse:collapse}
 th{padding:7px 12px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border);text-align:left;background:var(--sec);white-space:nowrap;cursor:pointer;user-select:none}
 th:hover{color:var(--text)}
@@ -286,6 +299,58 @@ var TODAY = new Date();
 TODAY.setHours(0,0,0,0);
 
 var DEALS = [];
+
+// Per-field visibility + export config — {colKey: {show: bool, exp: bool}}
+var colConfig = {};
+var ALL_COL_KEYS = ["id","dealname","pipeLabel","stage","amount","prob","weighted","ownerName","closedate","impl","recur","svc","acv","wacv","svcd","sw"];
+function defaultColConfig() {
+  var cfg = {};
+  ALL_COL_KEYS.forEach(function(k){ cfg[k] = {show:true, exp:true}; });
+  return cfg;
+}
+function loadColConfig() {
+  try {
+    var stored = localStorage.getItem("cpiq-col-config");
+    if (stored) {
+      var parsed = JSON.parse(stored);
+      colConfig = defaultColConfig();
+      Object.keys(parsed).forEach(function(k){ if(colConfig[k]) colConfig[k] = parsed[k]; });
+    } else {
+      colConfig = defaultColConfig();
+    }
+  } catch(e) { colConfig = defaultColConfig(); }
+}
+function saveColConfig() {
+  try { localStorage.setItem("cpiq-col-config", JSON.stringify(colConfig)); } catch(e) {}
+}
+function isVisible(key) { return colConfig[key] ? colConfig[key].show : true; }
+function isExported(key) { return colConfig[key] ? colConfig[key].exp : true; }
+loadColConfig();
+
+// Section collapse state
+var sectionOpen = {};
+function loadSectionState() {
+  try { sectionOpen = JSON.parse(localStorage.getItem("cpiq-sections") || "{}"); } catch(e) { sectionOpen = {}; }
+}
+function saveSectionState() {
+  try { localStorage.setItem("cpiq-sections", JSON.stringify(sectionOpen)); } catch(e) {}
+}
+function toggleSection(id) {
+  sectionOpen[id] = sectionOpen[id] === false ? true : false;
+  saveSectionState();
+  var body = document.getElementById("sec-"+id);
+  var btn  = document.getElementById("cbtn-"+id);
+  if (body) body.classList.toggle("hidden", sectionOpen[id] === false);
+  if (btn)  btn.classList.toggle("collapsed", sectionOpen[id] === false);
+}
+function initSection(id) {
+  var open = sectionOpen[id] !== false; // default open
+  var body = document.getElementById("sec-"+id);
+  var btn  = document.getElementById("cbtn-"+id);
+  if (body) body.classList.toggle("hidden", !open);
+  if (btn)  btn.classList.toggle("collapsed", !open);
+}
+loadSectionState();
 var WON_DEALS = [];
 var wonFiltered = [];
 var filtered = [];
@@ -488,8 +553,10 @@ async function loadData() {
       var s = STAGES[d.dealstage] || {name:"Unknown", prob:0};
       var close = d.closedate ? new Date(d.closedate) : null;
       var pipeLabel = d.pipeline==="679336808"?"Opportunity":d.pipeline==="679502246"?"Expansion":"Deal";
+      var pl = d.pipeline==="679336808"?"Opportunity":d.pipeline==="679502246"?"Expansion":"Deal";
+      var stageName = s.name !== "Unknown" ? s.name : pl + " — Unknown Stage";
       return Object.assign({}, d, {
-        stage: s.name,
+        stage: stageName,
         prob: s.prob,
         weighted: Math.round(d.amount * s.prob),
         closeQ: close ? q(close) : "Unknown",
@@ -524,6 +591,8 @@ async function loadData() {
     populateQuarterDropdowns();
     populateWonFilters();
     go();
+    initSection('activeDeals');
+    initSection('closedWon');
 
   } catch(err) {
     document.getElementById("app").innerHTML =
@@ -552,9 +621,12 @@ function buildUI() {
     '<div class="sth">By Rep</div>',
     '<div class="rg" id="rgrid"></div>',
     '<div class="tw">',
+    '<div id="sec-activeDeals" class="section-body">',
     '  <div class="tc2">',
+    '    <button class="collapse-btn" id="cbtn-activeDeals" onclick="toggleSection(\"activeDeals\")" title="Collapse">&#9660;</button>',
     '    <div class="sth" style="margin:0">All Active Deals</div>',
     '    <span id="cnt" style="font-size:10px;color:var(--text3)"></span>',
+    '    <button class="col-settings-btn" onclick="toggleColPanel()">&#9881; Columns</button>',
     '    <div class="pg-per" style="margin-left:auto">Rows per page:',
     '      <select id="perPage" onchange="go()" style="padding:3px 6px">',
     '        <option value="25">25</option><option value="50">50</option>',
@@ -575,10 +647,13 @@ function buildUI() {
     '  </div>',
     '  <div class="scroll-hint" id="scrollHint">&#8592; scroll sideways to see all columns &#8594;</div>',
     '</div>',
+    '<div id="col-settings-panel" class="col-settings-panel"></div>',
     '<div class="pagination" id="paginationBar"></div>',
+    '</div>',
     // Closed Won section
     '<div class="card" style="margin-top:20px">',
     '  <div class="tc2" style="background:var(--g20,#052e16)">',
+    '    <button class="collapse-btn" id="cbtn-closedWon" onclick="toggleSection(\"closedWon\")" title="Collapse" style="color:#86efac">&#9660;</button>',
     '    <div class="sth" style="margin:0;color:#4ade80">&#10003; Closed Won</div>',
     '    <span id="wonCnt" style="font-size:10px;color:#86efac"></span>',
     '    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">',
@@ -588,15 +663,18 @@ function buildUI() {
     '      <select id="wonOwner" onchange="renderWon()" style="padding:3px 6px;font-size:10px;background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:4px"><option value="all">All Reps</option><option value="Matt Valin">Matt Valin</option><option value="Joe Haine">Joe Haine</option><option value="Tim Grisham">Tim Grisham</option><option value="Chris Knapp">Chris Knapp</option><option value="Chiara Pate">Chiara Pate</option></select>',
     '    </div>',
     '  </div>',
-    '  <div id="wonKpis" style="display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap"></div>',
-    '  <div class="table-scroll">',
-    '    <table><thead><tr id="wonHead"></tr></thead><tbody id="wonBody"></tbody></table>',
+    '  <div id="sec-closedWon" class="section-body">',
+    '    <div id="wonKpis" style="display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap"></div>',
+    '    <div class="table-scroll">',
+    '      <table><thead><tr id="wonHead"></tr></thead><tbody id="wonBody"></tbody></table>',
+    '    </div>',
     '  </div>',
     '</div>',
   ].join("");
 }
 
 var COLS = [
+  {key:"id",label:"HS Deal ID"},
   {key:"dealname",label:"Deal"},
   {key:"pipeLabel",label:"Pipeline"},
   {key:"stage",label:"Stage"},
@@ -685,7 +763,37 @@ function srt(col){
   renderTHead();
 }
 
-function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();renderFinanceSummary();renderWon();}
+function render(){renderKPIs();renderPipelines();renderQuarters();renderReps();renderTHead();renderTable();renderFinanceSummary();renderWon();initColPanel();}
+
+function initColPanel() {
+  var panel = document.getElementById("col-settings-panel");
+  if (!panel) return;
+  var allCols = COLS.concat(FIN_COLS);
+  panel.innerHTML = allCols.map(function(col) {
+    var sv = isVisible(col.key);
+    var ev = isExported(col.key);
+    return '<div class="col-setting-item">'
+      + '<div class="col-setting-label">' + col.label + '</div>'
+      + '<label class="col-setting-check"><input type="checkbox" '+(sv?'checked':'')
+      +  ' onchange="setColConfig(\"'+col.key+'\",\"show\",this.checked)"> Show</label>'
+      + '<label class="col-setting-check"><input type="checkbox" '+(ev?'checked':'')
+      +  ' onchange="setColConfig(\"'+col.key+'\",\"exp\",this.checked)"> Export</label>'
+      + '</div>';
+  }).join('');
+}
+
+function setColConfig(key, prop, val) {
+  if (!colConfig[key]) colConfig[key] = {show:true, exp:true};
+  colConfig[key][prop] = val;
+  saveColConfig();
+  renderTHead();
+  renderTable();
+}
+
+function toggleColPanel() {
+  var panel = document.getElementById("col-settings-panel");
+  if (panel) panel.classList.toggle("open");
+}
 
 function populateWonFilters() {
   var years = {};
@@ -872,12 +980,12 @@ function renderReps(){
 function renderTHead(){
   var el = document.getElementById("thead");
   if(!el) return;
-  var base = COLS.map(function(col){
+  var base = COLS.filter(function(col){ return isVisible(col.key); }).map(function(col){
     var active = sortCol===col.key?"sort-active":"";
     var arrow = sortCol===col.key?(sortDir===-1?"&#9660;":"&#9650;"):"&#8693;";
     return "<th class=\""+active+"\" onclick=\"srt('"+col.key+"')\">"+col.label+"<span class=\"sa2\">"+arrow+"</span></th>";
   }).join("");
-  var fin = financeMode ? FIN_COLS.map(function(col){
+  var fin = financeMode ? FIN_COLS.filter(function(col){ return isVisible(col.key); }).map(function(col){
     return "<th class=\"fin-th\">"+col.label+"</th>";
   }).join("") : "";
   el.innerHTML = base + fin;
@@ -926,15 +1034,20 @@ function renderTable(){
       '<td class="fin-td fin-calc fc-svc">'+(svcD>0?fmt(svcD):"—")+'</td>'+
       '<td class="fin-td fin-calc fc-sw">'+(swD>0?fmt(swD):"—")+'</td>'
     ) : '';
+    var baseCells = COLS.filter(function(col){ return isVisible(col.key); }).map(function(col){
+      if(col.key==='id') return '<td style="font-size:10px;color:var(--text3);font-family:monospace"><a href="'+url+'" target="_blank" style="color:var(--accent);text-decoration:none">'+d.id+'</a></td>';
+      if(col.key==='dealname') return '<td><a class="dl dn" href="'+url+'" target="_blank" title="'+escHtml(d.dealname)+'">'+escHtml(d.dealname)+'</a></td>';
+      if(col.key==='pipeLabel') return '<td><span class="pp '+pc+'">'+d.pipeLabel+'</span></td>';
+      if(col.key==='stage') return '<td style="white-space:nowrap">'+d.stage+'</td>';
+      if(col.key==='amount') return '<td class="monum">'+(d.amount>0?fmt(d.amount):"&mdash;")+'</td>';
+      if(col.key==='prob') return '<td><span class="pb '+probClass(d.prob)+'">'+Math.round(d.prob*100)+'%</span></td>';
+      if(col.key==='weighted') return '<td class="monum" style="color:var(--green)">'+(d.weighted>0?fmt(d.weighted):"&mdash;")+'</td>';
+      if(col.key==='ownerName') return '<td>'+d.ownerName+'</td>';
+      if(col.key==='closedate') return '<td style="white-space:nowrap">'+cs+odf+'</td>';
+      return '<td>—</td>';
+    }).join('');
     return '<tr class="'+rc+'" data-row-id="'+d.id+'">'+
-      '<td><a class="dl dn" href="'+url+'" target="_blank" title="'+escHtml(d.dealname)+'">'+escHtml(d.dealname)+'</a></td>'+
-      '<td><span class="pp '+pc+'">'+d.pipeLabel+'</span></td>'+
-      '<td style="white-space:nowrap">'+d.stage+'</td>'+
-      '<td class="monum">'+(d.amount>0?fmt(d.amount):"&mdash;")+'</td>'+
-      '<td><span class="pb '+probClass(d.prob)+'">'+Math.round(d.prob*100)+'%</span></td>'+
-      '<td class="monum" style="color:var(--green)">'+(d.weighted>0?fmt(d.weighted):"&mdash;")+'</td>'+
-      '<td>'+d.ownerName+'</td>'+
-      '<td style="white-space:nowrap">'+cs+odf+'</td>'+
+      baseCells+
       finRow+
       '</tr>';
   }).join("") || '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">No deals match filters</td></tr>';
@@ -974,19 +1087,26 @@ function doExport(){
     if(typeof av==="string") return av.localeCompare(bv)*sortDir;
     return (av-bv)*sortDir;
   });
-  var baseHdr = ["Deal Name","Pipeline","Stage","Amount","Probability","Weighted","Owner","Close Date","Overdue"];
-  var finHdr  = financeMode ? ["Impl Fee","Recurring Rev","Svc %","Total ACV","Wtd ACV","Service $","Software $"] : [];
-  var rows = [baseHdr.concat(finHdr)];
+  // Only include columns where export is enabled
+  var expBase = COLS.filter(function(col){ return isExported(col.key); });
+  var expFin  = financeMode ? FIN_COLS.filter(function(col){ return isExported(col.key); }) : [];
+  var hdr = expBase.map(function(col){ return col.label; }).concat(expFin.map(function(col){ return col.label; }));
+  var rows = [hdr];
   sorted.forEach(function(d){
-    var base = ['"'+d.dealname.replace(/,/g," ")+'"',d.pipeLabel,d.stage,d.amount,Math.round(d.prob*100)+"%",d.weighted,d.ownerName,d.closedate,d.overdue?"Yes":"No"];
-    var fin = [];
-    if(financeMode) {
-      var fd = finData[d.id]||{impl:0,recur:0,svc:0};
-      var acv=fd.impl+fd.recur, wACV=Math.round(acv*d.prob);
-      var svcD=Math.round(fd.recur*fd.svc/100), swD=Math.round(fd.recur*(1-fd.svc/100));
-      fin = [fd.impl, fd.recur, fd.svc+"%", acv, wACV, svcD, swD];
-    }
-    rows.push(base.concat(fin));
+    var fd = finData[d.id]||{impl:0,recur:0,svc:0};
+    var acv=fd.impl+fd.recur, wACV=Math.round(acv*d.prob);
+    var svcD=Math.round(fd.recur*fd.svc/100), swD=Math.round(fd.recur*(1-fd.svc/100));
+    var finVals = {impl:fd.impl, recur:fd.recur, svc:fd.svc+"%", acv:acv, wacv:wACV, svcd:svcD, sw:swD};
+    var baseVals = {
+      id: d.id,
+      dealname: '"'+d.dealname.replace(/,/g," ")+'"',
+      pipeLabel: d.pipeLabel, stage: d.stage, amount: d.amount,
+      prob: Math.round(d.prob*100)+"%", weighted: d.weighted,
+      ownerName: d.ownerName, closedate: d.closedate,
+    };
+    var row = expBase.map(function(col){ return baseVals[col.key] !== undefined ? baseVals[col.key] : "—"; })
+               .concat(expFin.map(function(col){ return finVals[col.key] !== undefined ? finVals[col.key] : "—"; }));
+    rows.push(row);
   });
   var a = document.createElement("a");
   a.href = "data:text/csv;charset=utf-8,"+encodeURIComponent(rows.map(function(r){return r.join(",")}).join("\n"));
