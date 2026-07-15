@@ -28,7 +28,7 @@ const DEAL_PROPERTIES = [
   'dealname', 'pipeline', 'dealstage', 'amount',
   'amount_in_home_currency', 'closedate', 'hubspot_owner_id',
   'implementation_fee__c', 'annual_recurring_fee__c',
-  'acv__c', 'service_percent',
+  'acv__c', 'service_percent', 'go_live_date__c',
 ];
 
 async function fetchPage(filterGroups, after = undefined, attempt = 0) {
@@ -115,6 +115,7 @@ function mapDeal(d, won = false) {
     impl:      parseFloat(d.properties.implementation_fee__c   || 0),
     recur:     parseFloat(d.properties.annual_recurring_fee__c || 0),
     acv:       parseFloat(d.properties.acv__c                  || 0),
+    goLive:    d.properties.go_live_date__c || '',
     svc:       parseFloat(d.properties.service_percent         || 0),
     won,
   };
