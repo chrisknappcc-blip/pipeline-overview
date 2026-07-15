@@ -249,7 +249,22 @@ tr:hover td.fin-td{background:rgba(232,168,56,.12) !important}
       <div class="fin-goal-item"><label>2026 ACV Goal</label><input class="fin-goal-input" id="gACV" type="text" placeholder="$0" oninput="saveGoals()" onfocus="clearFmt(this)" onblur="applyFmt(this,'gACV')"></div>
       <div class="fin-goal-item"><label>2026 Exit CARR Goal</label><input class="fin-goal-input" id="gCARR26" type="text" placeholder="$0" oninput="saveGoals()" onfocus="clearFmt(this)" onblur="applyFmt(this,'gCARR26')"></div>
       <div class="fin-goal-item"><label>2025 Exit CARR</label><input class="fin-goal-input" id="gCARR25" type="text" placeholder="$0" oninput="saveGoals()" onfocus="clearFmt(this)" onblur="applyFmt(this,'gCARR25')"></div>
-      <span style="font-size:10px;color:var(--text3);margin-left:4px">Goals are saved locally to your browser.</span>
+      <span style="font-size:10px;color:var(--text3);margin-left:4px">Goals are saved locally.</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-top:1px solid rgba(232,168,56,.2);margin-top:2px">
+      <span style="font-size:10px;font-weight:600;color:#a07820;text-transform:uppercase;letter-spacing:.05em;margin-right:4px">Quarter States:</span>
+      <select id="qsSelect" style="padding:3px 6px;font-size:11px;background:#1a1200;color:#e8a838;border:1px solid rgba(232,168,56,.4);border-radius:4px">
+        <option value="Q3-2026">Q3 2026</option>
+        <option value="Q4-2026">Q4 2026</option>
+        <option value="Q1-2027">Q1 2027</option>
+        <option value="Q2-2027">Q2 2027</option>
+      </select>
+      <button class="fin-btn" style="padding:4px 10px;font-size:11px" onclick="saveQState()">&#9635; Save</button>
+      <button class="fin-btn" style="padding:4px 10px;font-size:11px" onclick="loadQState()">&#9636; Load</button>
+      <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#e8a838;cursor:pointer">
+        <input type="checkbox" id="qsCarryOver" style="accent-color:#e8a838"> Carry over manual adjustments
+      </label>
+      <span id="qsStatus" style="font-size:10px;color:#a07820;margin-left:4px"></span>
     </div>
   </div>
 
@@ -302,7 +317,7 @@ var DEALS = [];
 
 // Per-field visibility + export config — {colKey: {show: bool, exp: bool}}
 var colConfig = {};
-var ALL_COL_KEYS = ["id","dealname","pipeLabel","stage","amount","prob","weighted","ownerName","closedate","impl","recur","svc","acv","wacv","svcd","sw"];
+var ALL_COL_KEYS = ["id","dealname","pipeLabel","stage","amount","prob","weighted","ownerName","closedate","impl","recur","svc","acv","wacv","svcd","sw","goLive"];
 function defaultColConfig() {
   var cfg = {};
   ALL_COL_KEYS.forEach(function(k){ cfg[k] = {show:true, exp:true}; });
@@ -357,7 +372,29 @@ var filtered = [];
 var sortCol = "amount", sortDir = -1, currentPage = 1, PAGE_SIZE = 25;
 var fetchedAt = null;
 var financeMode = false;
-var finData = {};  // keyed by deal id: {impl, recur, svc}
+var finData = {};           // keyed by deal id: {impl, recur, svc, closedate?, goLive?}
+var originalCloseDates = {}; // stores {closedate, closeQ} before any override
+
+function getEffectiveDate(d) {
+  var fd = finData[d.id];
+  return (fd && fd.closedate) || d.closedate || '';
+}
+function getEffectiveCloseQ(d) {
+  var dateStr = getEffectiveDate(d);
+  if (!dateStr) return 'Unknown';
+  var dt = new Date(dateStr + 'T00:00:00');
+  return isNaN(dt.getTime()) ? 'Unknown' : q(dt);
+}
+function isEffectiveOverdue(d) {
+  var dateStr = getEffectiveDate(d);
+  if (!dateStr) return false;
+  var dt = new Date(dateStr + 'T00:00:00');
+  dt.setHours(0,0,0,0);
+  return dt < TODAY;
+}
+function isDateOverridden(id) {
+  return !!(finData[id] && finData[id].closedate);
+}
 var finGoals = {acv: 0, carr26: 0, carr25: 0};
 
 function q(d){var m=d.getMonth(),y=d.getFullYear();return "Q"+(Math.floor(m/3)+1)+" "+y}
@@ -409,7 +446,7 @@ function probClass(p){
 function loadFinStorage() {
   // Seed finance data from HubSpot values first
   DEALS.forEach(function(d) {
-    finData[d.id] = { impl: d.impl||0, recur: d.recur||0, svc: d.svc||0 };
+    finData[d.id] = { impl: d.impl||0, recur: d.recur||0, svc: d.svc||0, goLive: d.goLive||'' };
   });
   // Then apply any localStorage overrides on top
   try {
@@ -447,6 +484,78 @@ function applyFmt(el, id) {
   saveGoals();
 }
 
+function saveQState() {
+  var quarter = (document.getElementById('qsSelect') || {}).value || 'Q3-2026';
+  var key = 'cpiq-qstate-' + quarter;
+  var state = { finData: {}, goals: finGoals, savedAt: new Date().toISOString() };
+  // Only save deals that have manual overrides
+  Object.keys(finData).forEach(function(id) {
+    var fd = finData[id];
+    var d = DEALS.find(function(x){ return x.id === id; });
+    var hasOverride = (d && (
+      fd.impl !== (d.impl||0) ||
+      fd.recur !== (d.recur||0) ||
+      fd.svc !== (d.svc||0) ||
+      (fd.closedate && fd.closedate !== d.closedate) ||
+      fd.goLive
+    ));
+    if (hasOverride) state.finData[id] = fd;
+  });
+  try {
+    localStorage.setItem(key, JSON.stringify(state));
+    var el = document.getElementById('qsStatus');
+    if (el) { el.textContent = 'Saved ' + quarter.replace('-', ' ') + ' at ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+  } catch(e) {
+    var el = document.getElementById('qsStatus');
+    if (el) el.textContent = 'Save failed';
+  }
+}
+
+function loadQState() {
+  var quarter = (document.getElementById('qsSelect') || {}).value || 'Q3-2026';
+  var key = 'cpiq-qstate-' + quarter;
+  var carryOver = (document.getElementById('qsCarryOver') || {}).checked;
+  try {
+    var stored = localStorage.getItem(key);
+    if (!stored) {
+      var el = document.getElementById('qsStatus');
+      if (el) el.textContent = 'No saved state for ' + quarter.replace('-', ' ');
+      return;
+    }
+    var state = JSON.parse(stored);
+    // Reset finData to HubSpot defaults first
+    DEALS.forEach(function(d) {
+      finData[d.id] = { impl: d.impl||0, recur: d.recur||0, svc: d.svc||0, goLive: d.goLive||'' };
+    });
+    // Apply saved overrides
+    if (carryOver && state.finData) {
+      Object.keys(state.finData).forEach(function(id) {
+        if (finData[id]) finData[id] = Object.assign(finData[id], state.finData[id]);
+        else finData[id] = state.finData[id];
+        // Persist each override to localStorage
+        try { localStorage.setItem('cpiq-fin-'+id, JSON.stringify(finData[id])); } catch(e) {}
+      });
+    }
+    // Restore goals
+    if (state.goals) {
+      finGoals = state.goals;
+      var gACV = document.getElementById('gACV');
+      var gCARR26 = document.getElementById('gCARR26');
+      var gCARR25 = document.getElementById('gCARR25');
+      if (gACV && finGoals.acv) gACV.value = fmtGoalDisplay(finGoals.acv);
+      if (gCARR26 && finGoals.carr26) gCARR26.value = fmtGoalDisplay(finGoals.carr26);
+      if (gCARR25 && finGoals.carr25) gCARR25.value = fmtGoalDisplay(finGoals.carr25);
+    }
+    var saved = state.savedAt ? new Date(state.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    var el = document.getElementById('qsStatus');
+    if (el) el.textContent = 'Loaded ' + quarter.replace('-', ' ') + (saved ? ' (saved '+saved+')' : '') + (carryOver ? ' with overrides' : ' — HubSpot defaults');
+    render();
+  } catch(e) {
+    var el = document.getElementById('qsStatus');
+    if (el) el.textContent = 'Load failed';
+  }
+}
+
 function saveGoals() {
   finGoals = {
     acv: parseGoalInput((document.getElementById('gACV')||{}).value),
@@ -460,12 +569,27 @@ function saveGoals() {
 function saveFinField(el) {
   var id = el.dataset.id;
   var field = el.dataset.field;
-  var val = parseFloat(el.value) || 0;
-  if(!finData[id]) finData[id] = {impl:0, recur:0, svc:0};
+  var isDateField = (field === 'closedate' || field === 'goLive');
+  var val = isDateField ? el.value : (parseFloat(el.value) || 0);
+  if(!finData[id]) finData[id] = {impl:0, recur:0, svc:0, goLive:''};
   finData[id][field] = val;
   try { localStorage.setItem('cpiq-fin-'+id, JSON.stringify(finData[id])); } catch(e) {}
-  updateFinRowCalcs(id);
-  renderFinanceSummary();
+  if (field === 'closedate') {
+    // Close date change ripples through quarters and KPIs
+    el.style.color = val ? '#e8a838' : '';
+    render();
+  } else {
+    updateFinRowCalcs(id);
+    renderFinanceSummary();
+  }
+}
+
+function resetFinDate(id) {
+  if (finData[id]) {
+    delete finData[id].closedate;
+    try { localStorage.setItem('cpiq-fin-'+id, JSON.stringify(finData[id])); } catch(e) {}
+  }
+  render();
 }
 
 function updateFinRowCalcs(id) {
@@ -704,6 +828,7 @@ var FIN_COLS = [
   {key:"wacv",label:"Wtd ACV",fin:true,calc:true},
   {key:"svcd",label:"Service $",fin:true,calc:true},
   {key:"sw",label:"Software $",fin:true,calc:true},
+  {key:"goLive",label:"Go Live Date",fin:true},
 ];
 
 function attachEvents() {
@@ -964,8 +1089,8 @@ function renderQuarters(){
   document.getElementById("qgrid").innerHTML = qs.map(function(qname){
     var d;
     if(qname==="Overdue") d=filtered.filter(function(x){return x.overdue});
-    else if(qname==="Q2 2027+") d=filtered.filter(function(x){return !x.overdue&&["Q3 2026","Q4 2026","Q1 2027"].indexOf(x.closeQ)===-1});
-    else d=filtered.filter(function(x){return !x.overdue&&x.closeQ===qname});
+    else if(qname==="Q2 2027+") d=filtered.filter(function(x){return !isEffectiveOverdue(x)&&["Q3 2026","Q4 2026","Q1 2027"].indexOf(getEffectiveCloseQ(x))===-1});
+    else d=filtered.filter(function(x){return !isEffectiveOverdue(x)&&getEffectiveCloseQ(x)===qname});
     var raw=d.reduce(function(s,x){return s+x.amount},0);
     var wtd=d.reduce(function(s,x){return s+x.weighted},0);
     var cls=qname==="Overdue"?"od":(qname==="Q3 2026"||qname==="Q4 2026"?"cur":"");
@@ -1062,7 +1187,17 @@ function renderTable(){
       if(col.key==='prob') return '<td><span class="pb '+probClass(d.prob)+'">'+Math.round(d.prob*100)+'%</span></td>';
       if(col.key==='weighted') return '<td class="monum" style="color:var(--green)">'+(d.weighted>0?fmt(d.weighted):"&mdash;")+'</td>';
       if(col.key==='ownerName') return '<td>'+d.ownerName+'</td>';
-      if(col.key==='closedate') return '<td style="white-space:nowrap">'+cs+odf+'</td>';
+      if(col.key==='closedate') {
+        if (financeMode) {
+          var effDate = (finData[d.id] && finData[d.id].closedate) || d.closedate || '';
+          var overridden = !!(finData[d.id] && finData[d.id].closedate);
+          var resetBtn = overridden ? '<span title="Reset to HubSpot date" style="cursor:pointer;font-size:11px;color:#e8a838;margin-left:4px" data-id="'+d.id+'" onclick="resetFinDate(this.dataset.id)">↺</span>' : '';
+          return '<td class="fin-td" style="white-space:nowrap;min-width:140px">'
+            + '<input class="fin-input" type="date" data-id="'+d.id+'" data-field="closedate" value="'+effDate+'" onchange="saveFinField(this)" style="width:115px;'+(overridden?'color:#e8a838;border-bottom-color:#e8a838':'')+'">'
+            + resetBtn + '</td>';
+        }
+        return '<td style="white-space:nowrap">'+cs+odf+'</td>';
+      }
       return '<td>—</td>';
     }).join('');
     return '<tr class="'+rc+'" data-row-id="'+d.id+'">'+
