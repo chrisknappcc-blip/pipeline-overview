@@ -1169,6 +1169,7 @@ function renderTable(){
     var wACV = Math.round(acv * d.prob);
     var svcD = Math.round(fd.recur * fd.svc/100);
     var swD  = Math.round(fd.recur * (1-fd.svc/100));
+    var goLiveVal = fd.goLive || '';
     var finRow = financeMode ? (
       '<td class="fin-td"><input class="fin-input" type="number" data-id="'+d.id+'" data-field="impl" value="'+fd.impl+'" onblur="saveFinField(this)"></td>'+
       '<td class="fin-td"><input class="fin-input" type="number" data-id="'+d.id+'" data-field="recur" value="'+fd.recur+'" onblur="saveFinField(this)"></td>'+
@@ -1176,7 +1177,8 @@ function renderTable(){
       '<td class="fin-td fin-calc fc-acv">'+(acv>0?fmt(acv):"—")+'</td>'+
       '<td class="fin-td fin-calc fc-wacv">'+(wACV>0?fmt(wACV):"—")+'</td>'+
       '<td class="fin-td fin-calc fc-svc">'+(svcD>0?fmt(svcD):"—")+'</td>'+
-      '<td class="fin-td fin-calc fc-sw">'+(swD>0?fmt(swD):"—")+'</td>'
+      '<td class="fin-td fin-calc fc-sw">'+(swD>0?fmt(swD):"—")+'</td>'+
+      (isVisible('goLive') ? '<td class="fin-td" style="min-width:130px"><input class="fin-input" type="date" data-id="'+d.id+'" data-field="goLive" value="'+goLiveVal+'" onchange="saveFinField(this)" style="width:115px"></td>' : '')
     ) : '';
     var baseCells = COLS.filter(function(col){ return isVisible(col.key); }).map(function(col){
       if(col.key==='id') return '<td style="font-size:10px;color:var(--text3);font-family:monospace"><a href="'+url+'" target="_blank" style="color:var(--accent);text-decoration:none">'+d.id+'</a></td>';
